@@ -7,8 +7,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role { MEMBER ADMIN }
-enum AppStatus { PENDING APPROVED REJECTED }
+enum Role {
+  MEMBER
+  ADMIN
+}
+enum AppStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
 
 model Grade {
   id String @id
