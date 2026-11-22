@@ -201,3 +201,98 @@ export function Admin() {
     </Wrap>
   );
 }
+
+export function Disciplines() {
+  const [m, setM] = useState({ disciplines: [] });
+  useEffect(() => { api('/meta').then(setM).catch(() => {}); }, []);
+  return (
+    <Wrap title="Engineering disciplines" intro="Every member is admitted into one primary discipline.">
+      <div className="grid gap-3 sm:grid-cols-2">{m.disciplines.map((d) => <div key={d.id} className="rounded border border-slate-200 bg-white p-4 font-serif text-lg text-navy">{d.name}</div>)}</div>
+      <Link to="/membership" className="btn btn-gold">Apply for membership</Link>
+    </Wrap>
+  );
+}
+
+export function Verify() {
+  const [no, setNo] = useState(''); const [res, setRes] = useState(null); const [err, setErr] = useState('');
+  const go = async (e) => { e.preventDefault(); setErr(''); setRes(null); try { setRes(await api('/verify/' + encodeURIComponent(no.trim()))); } catch (x) { setErr(x.message); } };
+  return (
+    <Wrap title="Verify a credential" intro="Enter an IAEP member number to confirm that a person is a registered member.">
+      <form onSubmit={go} className="max-w-sm space-y-3 rounded border border-slate-200 bg-white p-5">
+        <Err msg={err} />
+        <Field label="Member number"><input className="inp font-mono" required placeholder="IAEP-2026-0001" value={no} onChange={(e) => setNo(e.target.value)} /></Field>
+        <button className="btn w-full">Verify</button>
+      </form>
+      {res && (res.valid
+        ? <div className="max-w-sm space-y-1 rounded border border-emerald-300 bg-emerald-50 p-5 text-sm"><p className="font-semibold text-emerald-800">Registered member</p><p className="font-serif text-xl font-bold text-navy">{res.name}</p><p className="font-mono text-gold">{res.postNominal}</p><p>{res.grade}, member since {fmt(res.since)}</p></div>
+        : <p className="max-w-sm rounded border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">No member found with that number. Check the number and try again.</p>)}
+    </Wrap>
+  );
+}
+
+export function News() {
+  const { user } = useAuth(); const [items, setItems] = useState([]); const [f, setF] = useState({ title: '', body: '' }); const [err, setErr] = useState('');
+  const load = () => api('/posts').then(setItems).catch((e) => setErr(e.message));
+  useEffect(() => { load(); }, []);
+  const add = async (e) => { e.preventDefault(); setErr(''); try { await api('/admin/posts', { method: 'POST', body: f }); setF({ title: '', body: '' }); load(); } catch (x) { setErr(x.message); } };
+  const del = async (id) => { try { await api('/admin/posts/' + id, { method: 'DELETE' }); load(); } catch (x) { setErr(x.message); } };
+  return (
+    <Wrap title="News and statements" intro="Announcements from the Secretariat.">
+      <Err msg={err} />
+      {user?.role === 'ADMIN' && (
+        <form onSubmit={add} className="space-y-3 rounded border border-slate-200 bg-white p-5">
+          <h2 className="font-serif text-lg font-bold text-navy">Post an announcement</h2>
+          <Field label="Title"><input className="inp" required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label="Message"><textarea className="inp" rows="4" required value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} /></Field>
+          <button className="btn">Publish</button>
+        </form>
+      )}
+      <div className="space-y-4">{items.map((p) => (
+        <article key={p.id} className="space-y-1 rounded border border-slate-200 bg-white p-5"><p className="text-xs text-slate-500">{fmt(p.createdAt)}</p><h3 className="font-serif text-lg font-bold text-navy">{p.title}</h3><p className="whitespace-pre-line text-sm text-slate-700">{p.body}</p>
+          {user?.role === 'ADMIN' && <button className="text-xs text-rose-700 underline" onClick={() => del(p.id)}>Delete</button>}</article>
+      ))}{!items.length && <p className="text-sm text-slate-500">No announcements yet.</p>}</div>
+    </Wrap>
+  );
+}
+
+export function About() {
+  return (
+    <Wrap title="About IAEP" intro="The International Association of Engineering Professionals connects engineers across borders, advances the profession and builds the future.">
+      <div className="space-y-4 rounded border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-700">
+        <p>IAEP admits qualified engineers into five membership grades, from Student Member to Fellow. Each grade has clear entry criteria, reviewed by the Admissions Board.</p>
+        <p>Members keep a personal record of continuing professional development, attend congresses, symposia and webinars, and hold a credential that anyone can verify online.</p>
+        <p>The Secretariat is based at Ughevwughe Community, Ughelli South, Delta State, Nigeria.</p>
+        <p className="text-xs text-slate-500">IAEP is an independent professional society. Membership does not replace statutory licensing, such as COREN in Nigeria.</p>
+      </div>
+      <div className="flex flex-wrap gap-3"><Link to="/membership" className="btn btn-gold">Apply for membership</Link><Link to="/verify" className="btn">Verify a credential</Link></div>
+    </Wrap>
+  );
+}
+
+export function Contact() {
+  const [f, setF] = useState({ name: '', email: '', text: '' }); const [done, setDone] = useState(false); const [err, setErr] = useState('');
+  const send = async (e) => { e.preventDefault(); setErr(''); try { await api('/messages', { method: 'POST', body: f }); setDone(true); } catch (x) { setErr(x.message); } };
+  if (done) return <Wrap title="Message sent"><p className="text-sm">Thank you. The Secretariat will reply to {f.email}.</p></Wrap>;
+  return (
+    <Wrap title="Contact the Secretariat" intro="Ughevwughe Community, Ughelli South, Delta State, Nigeria.">
+      <form onSubmit={send} className="max-w-lg space-y-3 rounded border border-slate-200 bg-white p-5">
+        <Err msg={err} />
+        <Field label="Your name"><input className="inp" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+        <Field label="Email"><input className="inp" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+        <Field label="Message"><textarea className="inp" rows="5" required value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} /></Field>
+        <button className="btn">Send message</button>
+      </form>
+    </Wrap>
+  );
+}
+
+export function AdminMessages() {
+  const { user, ready } = useAuth(); const [items, setItems] = useState([]); const [err, setErr] = useState('');
+  useEffect(() => { if (user?.role === 'ADMIN') api('/admin/messages').then(setItems).catch((e) => setErr(e.message)); }, [user]);
+  if (!ready) return null; if (user?.role !== 'ADMIN') return <Navigate to="/login" />;
+  return (
+    <Wrap title="Messages"><Err msg={err} />
+      <div className="space-y-3">{items.map((m) => <div key={m.id} className="rounded border border-slate-200 bg-white p-4 text-sm"><p className="text-xs text-slate-500">{fmt(m.createdAt)}, {m.name}, {m.email}</p><p className="whitespace-pre-line">{m.text}</p></div>)}{!items.length && <p className="text-sm text-slate-500">No messages yet.</p>}</div>
+    </Wrap>
+  );
+}

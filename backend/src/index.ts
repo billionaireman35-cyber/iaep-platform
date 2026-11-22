@@ -93,6 +93,23 @@ app.post('/api/admin/applications/:id/approve', auth(true), h(async (q, r) => {
   r.json({ memberNo, tempPassword, email: a.email });
 }));
 
+app.get('/api/verify/:no', h(async (q, r) => {
+  const u = await prisma.user.findUnique({ where: { memberNo: q.params.no.trim().toUpperCase() }, include: { grade: true } });
+  if (!u) return r.json({ valid: false });
+  r.json({ valid: true, name: u.name, postNominal: u.postNominal, grade: u.grade?.name, since: u.createdAt });
+}));
+app.get('/api/posts', h(async (_q, r) => r.json(await prisma.post.findMany({ orderBy: { createdAt: 'desc' } }))));
+app.post('/api/admin/posts', auth(true), h(async (q, r) => {
+  const d = z.object({ title: z.string().min(2), body: z.string().min(2) }).parse(q.body);
+  r.json(await prisma.post.create({ data: d }));
+}));
+app.delete('/api/admin/posts/:id', auth(true), h(async (q, r) => { await prisma.post.delete({ where: { id: q.params.id } }); r.json({ ok: true }); }));
+app.post('/api/messages', h(async (q, r) => {
+  const d = z.object({ name: z.string().min(2), email: z.string().email(), text: z.string().min(5) }).parse(q.body);
+  await prisma.message.create({ data: d }); r.json({ ok: true });
+}));
+app.get('/api/admin/messages', auth(true), h(async (_q, r) => r.json(await prisma.message.findMany({ orderBy: { createdAt: 'desc' } }))));
+
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {
   if (e instanceof z.ZodError) return r.status(400).json({ error: 'Please check the form: ' + e.issues.map((i) => i.path.join('.')).join(', ') });
   if (e.code === 'P2002') return r.status(409).json({ error: 'That email is already registered' });
