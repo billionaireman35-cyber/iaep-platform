@@ -19,7 +19,7 @@ export function Home() {
     <div>
       <section className="bg-navy px-4 py-14 text-white">
         <div className="mx-auto max-w-5xl space-y-5">
-          <Logo size={72} />
+          <Logo size={120} />
           <h1 className="max-w-2xl font-serif text-3xl font-bold leading-tight sm:text-5xl">Connecting professionals. Advancing engineering. Building the future.</h1>
           <p className="max-w-xl text-slate-300">IAEP admits qualified engineers, records their continuing professional development, and gives members credentials recognised across borders.</p>
           <div className="flex flex-wrap gap-3 pt-2">

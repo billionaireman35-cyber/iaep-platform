@@ -7,7 +7,7 @@ import { Home, Apply, Events, Courses, Login, Portal, Admin } from './pages.jsx'
 export const Logo = ({ size = 40 }) => (
   <span className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/60 bg-navy font-serif text-xs font-bold text-gold" style={{ width: size, height: size }}>
     IAEP
-    <img src="/iaep_official_logo.png" alt="" className="absolute inset-0 h-full w-full bg-navy object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+    <img src="/iaep_official_logo.jpg" alt="" className="absolute inset-0 h-full w-full bg-navy object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
   </span>
 );
 
