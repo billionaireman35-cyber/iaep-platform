@@ -296,3 +296,31 @@ export function AdminMessages() {
     </Wrap>
   );
 }
+
+function InfoPage({ slug, title, intro }) {
+  const { user } = useAuth(); const [p, setP] = useState(null); const [edit, setEdit] = useState(false);
+  const [f, setF] = useState({ title, body: '' }); const [err, setErr] = useState('');
+  useEffect(() => { api('/pages/' + slug).then((d) => { setP(d); setF({ title: d.title || title, body: d.body || '' }); }).catch((e) => setErr(e.message)); }, [slug]);
+  const save = async (e) => { e.preventDefault(); setErr(''); try { const d = await api('/admin/pages/' + slug, { method: 'PUT', body: f }); setP(d); setEdit(false); } catch (x) { setErr(x.message); } };
+  const admin = user?.role === 'ADMIN';
+  return (
+    <Wrap title={p?.title || title} intro={intro}>
+      <Err msg={err} />
+      {edit ? (
+        <form onSubmit={save} className="space-y-3 rounded border border-slate-200 bg-white p-5">
+          <Field label="Page title"><input className="inp" required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label="Content (blank lines start a new paragraph)"><textarea className="inp" rows="14" value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} /></Field>
+          <div className="flex gap-2"><button className="btn">Save page</button><button type="button" className="btn bg-slate-500" onClick={() => setEdit(false)}>Cancel</button></div>
+        </form>
+      ) : (
+        <div className="whitespace-pre-line rounded border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-700">{p?.body || 'This section is being prepared. Please check back soon.'}</div>
+      )}
+      {admin && !edit && <button className="btn" onClick={() => setEdit(true)}>Edit this page</button>}
+    </Wrap>
+  );
+}
+export const Governance = () => <InfoPage slug="governance" title="Governance and Council" intro="How IAEP is governed and who serves on the Council." />;
+export const Constitution = () => <InfoPage slug="constitution" title="Constitution, Policies and Ethics" intro="The rules, policies and code of conduct that members follow." />;
+export const Treasury = () => <InfoPage slug="treasury" title="Council Treasury and Finances" intro="Financial information published by the Secretariat." />;
+export const Chapters = () => <InfoPage slug="chapters" title="Chapters and Countries" intro="Where IAEP members are organised around the world." />;
+export const Corporate = () => <InfoPage slug="corporate" title="Corporate Partnerships" intro="Organisations that work with IAEP." />;

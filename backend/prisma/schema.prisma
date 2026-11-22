@@ -128,3 +128,10 @@ model Message {
   text      String
   createdAt DateTime @default(now())
 }
+
+model Page {
+  slug      String   @id
+  title     String
+  body      String   @default("")
+  updatedAt DateTime @updatedAt
+}

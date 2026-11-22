@@ -110,6 +110,13 @@ app.post('/api/messages', h(async (q, r) => {
 }));
 app.get('/api/admin/messages', auth(true), h(async (_q, r) => r.json(await prisma.message.findMany({ orderBy: { createdAt: 'desc' } }))));
 
+app.get('/api/pages/:slug', h(async (q, r) => r.json((await prisma.page.findUnique({ where: { slug: q.params.slug } })) || { slug: q.params.slug, title: '', body: '' })));
+app.put('/api/admin/pages/:slug', auth(true), h(async (q, r) => {
+  if (!['governance', 'constitution', 'treasury', 'chapters', 'corporate'].includes(q.params.slug)) return r.status(400).json({ error: 'Unknown page' });
+  const d = z.object({ title: z.string().min(2), body: z.string() }).parse(q.body);
+  r.json(await prisma.page.upsert({ where: { slug: q.params.slug }, update: d, create: { slug: q.params.slug, ...d } }));
+}));
+
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {
   if (e instanceof z.ZodError) return r.status(400).json({ error: 'Please check the form: ' + e.issues.map((i) => i.path.join('.')).join(', ') });
   if (e.code === 'P2002') return r.status(409).json({ error: 'That email is already registered' });
