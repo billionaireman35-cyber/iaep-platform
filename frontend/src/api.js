@@ -1,4 +1,4 @@
-const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:4000').replace(/\/$/, '');
+const BASE = (import.meta.env.VITE_API_URL || 'https://iaep-platform.onrender.com').replace(/\/$/, '');
 export async function api(path, { method = 'GET', body } = {}) {
   const token = localStorage.getItem('iaep_token');
   const res = await fetch(BASE + '/api' + path, {

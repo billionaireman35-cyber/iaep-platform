@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 const app = express();
 const SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || true }));
+app.use(cors());
 app.use(express.json());
 
 const DISCIPLINES = [
