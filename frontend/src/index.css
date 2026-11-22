@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body { @apply bg-slate-50 text-slate-800 antialiased; }
+.inp { @apply w-full rounded border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-navy focus:outline-none; }
+.btn { @apply inline-flex items-center justify-center gap-2 rounded bg-navy px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50; }
+.btn-gold { @apply bg-gold text-navy; }
+@media print { header, footer, .no-print { display: none !important; } }
