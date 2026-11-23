@@ -3,7 +3,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "prisma generate && tsc",
-    "start": "prisma db push --skip-generate && node dist/seed.js && node dist/seedAdmin.js && node dist/index.js"
+    "start": "prisma db push --skip-generate && node dist/seed.js && node dist/seedAdmin.js && node dist/seedDivisions.js && node dist/index.js"
   },
   "dependencies": {
     "@prisma/client": "5.22.0", "prisma": "5.22.0",

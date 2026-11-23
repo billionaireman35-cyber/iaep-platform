@@ -151,3 +151,10 @@ model Payment {
   memberNo String?
   createdAt DateTime @default(now())
 }
+
+model Division {
+  id String @id
+  name String
+  summary String
+  subfields String[]
+}

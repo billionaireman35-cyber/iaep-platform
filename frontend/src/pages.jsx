@@ -201,7 +201,7 @@ export function Courses() {
   return (
     <Wrap title="Learning and CPD" intro="Short courses for working engineers.">
       <Err msg={err} />
-      {items && items.length === 0 && <p className="text-slate-600">No courses are available at the moment. New courses are announced here by the Secretariat. No courses are available yet.</p>}
+      {items && items.length === 0 && <p className="text-slate-600">No courses are available at the moment. New courses are announced here by the Secretariat.</p>}
       <div className="grid gap-4 sm:grid-cols-2">{(items || []).map((c) => (
         <ActionCard key={c.id} user={user} title={c.title} meta={`${c.level}, ${c.cpdHours} CPD hours`} body={c.description}
           done={user?.enrollments?.some((r) => r.courseId === c.id)} doneText="You are enrolled" actionText="Enrol"
@@ -268,12 +268,12 @@ export function Admin() {
   if (!ready) return null; if (user?.role !== 'ADMIN') return <Navigate to="/login" />;
   const act = async (id, what) => { setErr(''); try { const r = await api(`/admin/applications/${id}/${what}`, { method: 'POST' }); if (what === 'approve') setIssued(r); load(); } catch (x) { setErr(x.message); } };
   return (
-    <Wrap title="Admissions" intro="Review applications. Approving creates the member account and shows a temporary password to pass on to the applicant.">
+    <Wrap title="Admissions" intro="Review applications. Approving a file invites the applicant to pay their first annual dues by card. The member number is issued automatically once the payment is confirmed.">
       <Err msg={err} />
-      {issued && <div className="rounded border border-amber-300 bg-amber-50 p-4 text-sm">Account created for <strong>{issued.email}</strong>. Member number <strong>{issued.memberNo}</strong>. Temporary password <strong className="font-mono">{issued.tempPassword}</strong>. Send it to them now, it is shown only once.</div>}
+      {issued && (issued.memberNo === 'Issued after payment' ? <div className="rounded border border-amber-300 bg-amber-50 p-4 text-sm">Approved for payment. {issued.tempPassword}. Applicant email: <strong>{issued.email}</strong>. The member number is issued automatically when the payment is confirmed.</div> : issued && <div className="rounded border border-amber-300 bg-amber-50 p-4 text-sm">Account created for <strong>{issued.email}</strong>. Member number <strong>{issued.memberNo}</strong>. Temporary password <strong className="font-mono">{issued.tempPassword}</strong>. Send it to them now, it is shown only once.</div>)}
       <div className="space-y-3">{items.map((a) => (
         <div key={a.id} className="space-y-1 rounded border border-slate-200 bg-white p-4 text-sm">
-          <div className="flex flex-wrap justify-between gap-2"><strong>{a.name}</strong><span className="font-mono text-xs">{a.ref}, {a.status}</span></div>
+          <div className="flex flex-wrap justify-between gap-2"><strong>{a.name}</strong><span className="font-mono text-xs">{a.ref}, {a.status === 'AWAITING_PAYMENT' ? 'AWAITING PAYMENT' : a.status}</span></div>
           <p className="text-slate-600">{a.grade.name}, {a.disciplineId}. {a.degree}, {a.institution} ({a.gradYear}). {a.jobTitle} at {a.employer}, {a.years} years.</p>
           <p className="text-xs text-slate-500">{a.email} {a.phone} {a.country} {a.city}{a.sponsorName ? `, sponsor ${a.sponsorName} ${a.sponsorNo || ''}` : ''}</p>
           {a.summary && <p className="text-slate-600">{a.summary}</p>}
@@ -285,12 +285,30 @@ export function Admin() {
 }
 
 export function Disciplines() {
-  const [m, setM] = useState({ disciplines: [] });
-  useEffect(() => { api('/meta').then(setM).catch(() => {}); }, []);
+  const [items, setItems] = useState(null); const [q, setQ] = useState(''); const [err, setErr] = useState('');
+  useEffect(() => { api('/divisions').then(setItems).catch((e) => setErr(e.message)); }, []);
+  const list = (items || []).filter((d) => (d.name + ' ' + d.subfields.join(' ')).toLowerCase().includes(q.trim().toLowerCase()));
   return (
-    <Wrap title="Engineering disciplines" intro="Every member is admitted into one primary discipline.">
-      <div className="grid gap-3 sm:grid-cols-2">{m.disciplines.map((d) => <div key={d.id} className="rounded border border-slate-200 bg-white p-4 font-serif text-lg text-navy">{d.name}</div>)}</div>
-      <Link to="/membership" className="btn btn-gold">Apply for membership</Link>
+    <Wrap title="Engineering divisions" intro="The major fields of engineering. Every member is admitted into one primary division.">
+      <Err msg={err} />
+      <input className="inp mb-2 max-w-md" placeholder="Search a division or field, for example aerodynamics" value={q} onChange={(e) => setQ(e.target.value)} />
+      {items && <p className="mb-4 text-sm text-slate-500">Showing {list.length} of {items.length} divisions</p>}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {list.map((d) => (
+          <details key={d.id} className="rounded-xl border border-slate-200 bg-white p-5">
+            <summary className="cursor-pointer list-none">
+              <h3 className="text-xl font-medium text-slate-900">{d.name}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">{d.summary}</p>
+              <p className="mt-3 text-xs font-semibold text-clay">{d.subfields.length} fields of practice. Tap to see them</p>
+            </summary>
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+              {d.subfields.map((s) => <span key={s} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">{s}</span>)}
+            </div>
+          </details>
+        ))}
+      </div>
+      {items && list.length === 0 && <p className="text-slate-600">No division matches that search.</p>}
+      <div className="mt-8"><Link to="/membership" className="btn btn-gold">Apply for membership</Link></div>
     </Wrap>
   );
 }

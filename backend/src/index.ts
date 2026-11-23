@@ -213,6 +213,8 @@ app.post('/api/payments/webhook', h(async (q, r) => {
   r.sendStatus(200);
 }));
 
+app.get('/api/divisions', h(async (_q, r) => r.json(await prisma.division.findMany({ orderBy: { name: 'asc' } }))));
+
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {
   if (e instanceof z.ZodError) return r.status(400).json({ error: 'Please check the form: ' + e.issues.map((i) => i.path.join('.')).join(', ') });
   if (e.code === 'P2002') return r.status(409).json({ error: 'That email is already registered' });
