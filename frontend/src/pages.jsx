@@ -579,7 +579,7 @@ export function CourseView() {
     <Wrap title={c.title} intro={`${c.level}, ${c.cpdHours} CPD hours${c.instructorName ? ', taught by ' + c.instructorName : ''}`}>
       <Err msg={err} />
       <div className="mb-6 whitespace-pre-line rounded-xl border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-700">{c.description}</div>
-      {d.instructor && <div className="mb-6 flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5"><Avatar src={d.instructor.avatar} name={d.instructor.name} size={56} /><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your instructor</p><p className="mt-1 flex flex-wrap items-center gap-2 font-medium text-slate-900">{d.instructor.name}<span className="rounded-full bg-clay px-2 py-0.5 text-[10px] font-semibold text-white">Instructor</span></p>{d.instructor.bio && <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{d.instructor.bio}</p>}</div></div>}
+      {d.instructor && <div className="mb-6 flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5"><Avatar src={d.instructor.avatar} name={d.instructor.name} size={56} /><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your instructor</p><p className="mt-1 flex flex-wrap items-center gap-2 font-medium text-slate-900"><Link to={'/instructor/' + d.instructor.id} className="underline">{d.instructor.name}</Link><span className="rounded-full bg-clay px-2 py-0.5 text-[10px] font-semibold text-white">Instructor</span></p>{d.instructor.bio && <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{d.instructor.bio}</p>}</div></div>}
       <div className="mb-8">
         {!user && <Link to="/login" className="btn">Sign in to enrol</Link>}
         {user && !d.member && <p className="text-sm text-slate-700">Courses are open to active members. <Link to="/pay" className="font-semibold text-clay underline">Complete your membership</Link> to enrol.</p>}
@@ -588,6 +588,9 @@ export function CourseView() {
       </div>
       {d.certificate && <div className="mb-8 rounded-xl border border-clay bg-white p-5"><h2 className="text-2xl font-medium text-slate-900">Course completed</h2><p className="mt-1 text-sm text-slate-700">Your CPD hours have been added to your record.</p><Link to={'/certificate/' + d.certificate} className="btn btn-gold mt-3">View your certificate</Link></div>}
       {d.enrolled && !d.canEdit && d.lessons.length > 0 && !d.certificate && <p className="mb-6 text-sm text-slate-600">Progress: {doneIds.length} of {d.lessons.length} lessons completed</p>}
+      {d.enrolled && !d.canEdit && d.lessons.length > 0 && !d.certificate && <ContinueBar lessons={d.lessons} done={doneIds} />}
+      {(d.enrolled || d.canEdit) && <Announcements courseId={c.id} canPost={d.canEdit} />}
+      <Reviews courseId={c.id} canReview={d.enrolled && !d.canEdit} />
       {d.classes.length > 0 && (
         <div className="mb-8">
           <h2 className="mb-3 text-2xl font-medium text-slate-900">Live classes</h2>
@@ -885,6 +888,143 @@ export function Profile() {
           <Field label="About you (shown on courses you teach)"><textarea className="inp" rows="4" maxLength="600" value={bio || ''} onChange={(e) => setBio(e.target.value)} /></Field>
           <button className="btn btn-gold">Save</button>
         </form>
+      </div>
+    </Wrap>
+  );
+}
+
+function Stars({ n, size = 16 }) {
+  return <span style={{ fontSize: size }} className="text-clay" aria-label={n + ' out of 5'}>{[1, 2, 3, 4, 5].map((i) => (i <= Math.round(n) ? '★' : '☆')).join('')}</span>;
+}
+
+function Reviews({ courseId, canReview }) {
+  const { user } = useAuth();
+  const [d, setD] = useState(null); const [err, setErr] = useState(''); const [rating, setRating] = useState(0); const [comment, setComment] = useState(''); const [ok, setOk] = useState('');
+  const load = () => api('/courses/' + courseId + '/reviews').then((x) => { setD(x); const m = user && x.reviews.find((v) => v.userId === user.id); if (m) { setRating(m.rating); setComment(m.comment); } }).catch(() => {});
+  useEffect(() => { load(); }, [courseId, user && user.id]);
+  const save = async (e) => { e.preventDefault(); setErr(''); setOk(''); if (!rating) { setErr('Choose a star rating'); return; } try { await api('/courses/' + courseId + '/review', { method: 'POST', body: { rating, comment } }); setOk('Thank you, your review is saved'); load(); } catch (x) { setErr(x.message); } };
+  return (
+    <div className="mb-8 rounded-xl border border-slate-200 bg-white p-5">
+      <h2 className="text-2xl font-medium text-slate-900">Reviews</h2>
+      {d && d.count > 0 ? <p className="mt-1 text-sm text-slate-700"><Stars n={d.average} size={20} /> <b>{d.average.toFixed(1)}</b> from {d.count} {d.count === 1 ? 'review' : 'reviews'}</p> : <p className="mt-1 text-sm text-slate-600">No reviews yet.</p>}
+      {canReview && (
+        <form onSubmit={save} className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+          <Err msg={err} />
+          {ok && <p className="text-sm font-semibold text-clay">{ok}</p>}
+          <div className="flex gap-1">{[1, 2, 3, 4, 5].map((i) => <button type="button" key={i} onClick={() => setRating(i)} aria-label={i + ' stars'} className="text-3xl text-clay">{i <= rating ? '★' : '☆'}</button>)}</div>
+          <textarea className="inp" rows="3" maxLength="600" placeholder="Tell other members what you thought of this course (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
+          <button className="btn">Save my review</button>
+        </form>
+      )}
+      <div className="mt-4 space-y-3">{(d ? d.reviews : []).filter((v) => v.comment).map((v) => (
+        <div key={v.id} className="rounded-lg bg-slate-50 p-3">
+          <p className="text-sm"><Stars n={v.rating} /> <b className="text-slate-800">{v.userName}</b> <span className="text-xs text-slate-500">, {fmt(v.createdAt)}</span></p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{v.comment}</p>
+        </div>
+      ))}</div>
+    </div>
+  );
+}
+
+function Announcements({ courseId, canPost }) {
+  const { user } = useAuth();
+  const [items, setItems] = useState(null); const [err, setErr] = useState(''); const [f, setF] = useState({ title: '', body: '' });
+  const load = () => api('/courses/' + courseId + '/announcements').then(setItems).catch((e) => setErr(e.message));
+  useEffect(() => { load(); }, [courseId]);
+  const post = async (e) => { e.preventDefault(); setErr(''); try { await api('/courses/' + courseId + '/announcements', { method: 'POST', body: f }); setF({ title: '', body: '' }); load(); } catch (x) { setErr(x.message); } };
+  const del = async (id) => { setErr(''); try { await api('/announcements/' + id, { method: 'DELETE' }); load(); } catch (x) { setErr(x.message); } };
+  if (!canPost && items && items.length === 0) return null;
+  return (
+    <div className="mb-8 rounded-xl border border-slate-200 bg-white p-5">
+      <h2 className="text-2xl font-medium text-slate-900">Announcements</h2>
+      <Err msg={err} />
+      {canPost && (
+        <form onSubmit={post} className="mt-3 space-y-3 border-b border-slate-200 pb-4">
+          <input className="inp" placeholder="Announcement title" required minLength="3" maxLength="120" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+          <textarea className="inp" rows="3" placeholder="Message to your students" required minLength="3" maxLength="2000" value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} />
+          <button className="btn">Post announcement</button>
+        </form>
+      )}
+      <div className="mt-3 space-y-3">{(items || []).map((a) => (
+        <div key={a.id} className="rounded-lg bg-slate-50 p-3">
+          <p className="font-medium text-slate-900">{a.title}</p>
+          <p className="text-xs text-slate-500">{a.authorName}, {fmt(a.createdAt)}</p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{a.body}</p>
+          {user && (user.role === 'ADMIN' || user.id === a.authorId) && <button className="mt-1 text-xs text-red-700 underline" onClick={() => window.confirm('Delete this announcement?') && del(a.id)}>Delete</button>}
+        </div>
+      ))}</div>
+    </div>
+  );
+}
+
+function ContinueBar({ lessons, done }) {
+  const next = lessons.find((l) => !done.includes(l.id));
+  if (!next) return null;
+  const started = done.length > 0;
+  const go = () => { const el = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5')).find((x) => x.textContent.includes(String(next.title).trim())); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  return (
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-clay bg-white p-5">
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-clay">{started ? 'Continue where you left off' : 'Start the course'}</p><p className="mt-1 font-medium text-slate-900">Next lesson: {next.title}</p></div>
+      <button className="btn btn-gold" onClick={go}>{started ? 'Continue' : 'Start'}</button>
+    </div>
+  );
+}
+
+export function InstructorList() {
+  const [d, setD] = useState(null); const [err, setErr] = useState('');
+  useEffect(() => { api('/instructors').then(setD).catch((e) => setErr(e.message)); }, []);
+  return (
+    <Wrap title="Our instructors" intro="The engineers and academics who teach on IAEP.">
+      <Err msg={err} />
+      {d && d.length === 0 && <p className="text-sm text-slate-600">Instructors will appear here once their courses are published.</p>}
+      <div className="grid gap-4 sm:grid-cols-2">{(d || []).map((x) => (
+        <Link key={x.id} to={'/instructor/' + x.id} className="flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5">
+          <Avatar src={x.avatar} name={x.name} size={56} />
+          <div><h3 className="text-lg font-medium text-slate-900">{x.name}</h3><p className="text-xs text-slate-500">{[x.title, x.organization].filter(Boolean).join(', ')}</p><p className="mt-1 text-xs font-semibold text-clay">{x.courses} {x.courses === 1 ? 'course' : 'courses'}</p></div>
+        </Link>
+      ))}</div>
+    </Wrap>
+  );
+}
+
+export function InstructorPage() {
+  const id = window.location.pathname.split('/')[2]; const [d, setD] = useState(null); const [err, setErr] = useState('');
+  useEffect(() => { api('/instructors/' + encodeURIComponent(id)).then(setD).catch((e) => setErr(e.message)); }, [id]);
+  if (!d) return <Wrap title="Instructor" intro=""><Err msg={err} /></Wrap>;
+  return (
+    <Wrap title={d.name} intro={[d.title, d.organization].filter(Boolean).join(', ')}>
+      <div className="mb-8 flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5">
+        <Avatar src={d.avatar} name={d.name} size={80} />
+        <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{d.bio || 'This instructor has not added an introduction yet.'}</p>
+      </div>
+      <h2 className="mb-3 text-2xl font-medium text-slate-900">Courses</h2>
+      <div className="grid gap-4 sm:grid-cols-2">{d.courses.map((c) => (
+        <Link key={c.id} to={'/course/' + c.id} className="block rounded-xl border border-slate-200 bg-white p-5">
+          <p className="text-xs text-slate-500">{c.level}, {c.cpdHours} CPD hours</p>
+          <h3 className="mt-1 text-lg font-medium text-slate-900">{c.title}</h3>
+        </Link>
+      ))}</div>
+    </Wrap>
+  );
+}
+
+export function VerifyEmail() {
+  const { user, refresh, logout } = useAuth();
+  const [code, setCode] = useState(''); const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
+  const send = async (again) => { setErr(''); setMsg(''); try { const r = await api('/auth/send-code', { method: 'POST', body: { force: !!again } }); if (r.sent) setMsg('A new code has been sent.'); } catch (x) { setErr(x.message); } };
+  useEffect(() => { send(false); }, []);
+  const verify = async (e) => { e.preventDefault(); setErr(''); try { await api('/auth/verify-code', { method: 'POST', body: { code: code.trim() } }); await refresh(); } catch (x) { setErr(x.message); } };
+  return (
+    <Wrap title="Verify your email" intro="One last step before you can use your account.">
+      <div className="mx-auto max-w-md space-y-4 rounded-xl border border-slate-200 bg-white p-6">
+        <p className="text-sm text-slate-700">We sent a 6-digit code to <b>{user && user.email}</b>. It can take a few minutes to arrive. <b>If you do not see it, check your spam or junk folder.</b> The code expires after 15 minutes.</p>
+        <Err msg={err} />
+        {msg && <p className="text-sm font-semibold text-clay">{msg}</p>}
+        <form onSubmit={verify} className="space-y-3">
+          <input className="inp text-center text-2xl tracking-widest" inputMode="numeric" autoComplete="one-time-code" maxLength="6" placeholder="000000" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+          <button className="btn btn-gold w-full">Verify and continue</button>
+        </form>
+        <div className="flex justify-between text-sm"><button className="font-semibold text-clay underline" onClick={() => send(true)}>Send a new code</button><button className="text-slate-500 underline" onClick={logout}>Sign out</button></div>
       </div>
     </Wrap>
   );

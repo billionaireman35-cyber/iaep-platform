@@ -22,11 +22,16 @@ const DISCIPLINES = [
 
 type Req = Request & { uid?: string };
 const h = (fn: (req: Req, res: Response) => Promise<any>) => (req: Request, res: Response, next: NextFunction) => fn(req as Req, res).catch(next);
-const auth = (admin = false) => (req: Req, res: Response, next: NextFunction) => {
+const auth = (admin = false) => async (req: Req, res: Response, next: NextFunction) => {
   try {
     const p = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), SECRET) as { id: string; role: string };
     if (admin && p.role !== 'ADMIN') return res.status(403).json({ error: 'Admins only' });
-    req.uid = p.id; next();
+    req.uid = p.id;
+    if (!/^\/api\/(me$|auth\/)/.test(req.originalUrl.split('?')[0])) {
+      const v = await prisma.user.findUnique({ where: { id: p.id }, select: { emailVerified: true } });
+      if (v && !v.emailVerified) return res.status(403).json({ error: 'Please verify your email to continue', needsVerification: true });
+    }
+    next();
   } catch { res.status(401).json({ error: 'Please sign in' }); }
 };
 
@@ -43,7 +48,7 @@ app.post('/api/auth/login', h(async (q, r) => {
 app.get('/api/me', auth(), h(async (q, r) => {
   const u = await prisma.user.findUnique({ where: { id: q.uid }, include: { grade: true, enrollments: true, registrations: true, cpd: { orderBy: { date: 'desc' } } } });
   if (!u) return r.status(401).json({ error: 'Please sign in' });
-  const { passwordHash, ...user } = u;
+  const { passwordHash, verifyHash, verifyExpires, verifyTries, verifySentAt, ...user } = u;
   r.json({ ...user, cpdDone: u.cpd.reduce((s, c) => s + c.hours, 0) });
 }));
 
@@ -256,7 +261,7 @@ app.get('/api/courses/:id', h(async (q, r) => {
   const cert = uid ? await prisma.certificate.findUnique({ where: { userId_courseId: { userId: uid, courseId: c.id } } }) : null;
   const ins = c.instructorId ? await prisma.user.findUnique({ where: { id: c.instructorId } }) : null;
   r.json({
-    course: c, member: !!u, enrolled, canEdit, done, certificate: cert ? cert.code : null, instructor: ins ? { name: ins.name, bio: ins.bio, avatar: ins.avatar } : null,
+    course: c, member: !!u, enrolled, canEdit, done, certificate: cert ? cert.code : null, instructor: ins ? { id: ins.id, name: ins.name, bio: ins.bio, avatar: ins.avatar } : null,
     lessons: lessons.map((l) => (open ? l : { id: l.id, title: l.title, position: l.position, locked: true })),
     classes: classes.map((x) => (open ? x : { id: x.id, title: x.title, startsAt: x.startsAt, durationMins: x.durationMins, locked: true })),
   });
@@ -407,9 +412,101 @@ app.get('/api/my/learning', auth(), h(async (q, r) => {
   });
 }));
 
+const codeHash = (code: string, uid: string) => crypto.createHmac('sha256', SECRET).update(code + ':' + uid).digest('hex');
+const sendMail = async (to: string, subject: string, html: string) => {
+  if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL) throw new Error('NOMAIL');
+  const res = await (globalThis as any).fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ sender: { name: 'IAEP', email: process.env.BREVO_SENDER_EMAIL }, to: [{ email: to }], subject, htmlContent: html }) });
+  if (!res.ok) throw new Error('MAILFAIL');
+};
+app.post('/api/auth/send-code', auth(), h(async (q, r) => {
+  const force = !!(q.body && q.body.force);
+  const u = await prisma.user.findUnique({ where: { id: q.uid! } });
+  if (!u) return r.status(401).json({ error: 'Please sign in' });
+  if (u.emailVerified) return r.json({ verified: true });
+  const now = Date.now();
+  const live = u.verifyHash && u.verifyExpires && u.verifyExpires.getTime() > now;
+  if (live && !force) return r.json({ sent: false });
+  if (u.verifySentAt && now - u.verifySentAt.getTime() < 60000) return r.status(429).json({ error: 'Please wait a minute before asking for another code.' });
+  const code = String(crypto.randomInt(100000, 1000000));
+  await prisma.user.update({ where: { id: u.id }, data: { verifyHash: codeHash(code, u.id), verifyExpires: new Date(now + 15 * 60000), verifyTries: 0, verifySentAt: new Date(now) } });
+  const nm = u.name.replace(/[<>&]/g, '');
+  const html = '<div style="font-family:Georgia,serif;max-width:480px;margin:auto;color:#1B1917"><h2>Verify your email</h2><p>Hello ' + nm + ',</p><p>Your IAEP verification code is:</p><p style="font-size:32px;letter-spacing:8px;font-weight:bold">' + code + '</p><p>It expires in 15 minutes. If this email ever lands in your spam or junk folder, mark it as not spam so you receive our messages.</p><p>If you did not create an IAEP account, you can ignore this email.</p></div>';
+  try { await sendMail(u.email, 'Your IAEP verification code: ' + code, html); }
+  catch (e: any) {
+    await prisma.user.update({ where: { id: u.id }, data: { verifySentAt: null } });
+    return r.status(503).json({ error: e.message === 'NOMAIL' ? 'Email sending is not set up yet. Please contact the Secretariat.' : 'We could not send the email. Please try again in a minute.' });
+  }
+  r.json({ sent: true });
+}));
+app.post('/api/auth/verify-code', auth(), h(async (q, r) => {
+  const { code } = z.object({ code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code') }).parse(q.body);
+  const u = await prisma.user.findUnique({ where: { id: q.uid! } });
+  if (!u) return r.status(401).json({ error: 'Please sign in' });
+  if (u.emailVerified) return r.json({ ok: true });
+  if (!u.verifyHash || !u.verifyExpires || u.verifyExpires.getTime() < Date.now()) return r.status(400).json({ error: 'That code has expired. Request a new one.' });
+  if (u.verifyTries >= 5) return r.status(429).json({ error: 'Too many wrong attempts. Request a new code.' });
+  if (codeHash(code, u.id) !== u.verifyHash) {
+    await prisma.user.update({ where: { id: u.id }, data: { verifyTries: { increment: 1 } } });
+    return r.status(400).json({ error: 'That code is not correct.' });
+  }
+  await prisma.user.update({ where: { id: u.id }, data: { emailVerified: true, verifyHash: '', verifyExpires: null, verifyTries: 0 } });
+  r.json({ ok: true });
+}));
+app.get('/api/courses/:id/reviews', h(async (q, r) => {
+  const rows = await prisma.review.findMany({ where: { courseId: q.params.id }, orderBy: { createdAt: 'desc' }, take: 50 });
+  const agg = await prisma.review.aggregate({ where: { courseId: q.params.id }, _avg: { rating: true }, _count: true });
+  r.json({ average: agg._avg.rating || 0, count: agg._count, reviews: rows });
+}));
+app.post('/api/courses/:id/review', auth(), h(async (q, r) => {
+  const d = z.object({ rating: z.number().int().min(1).max(5), comment: z.string().max(600) }).parse(q.body);
+  const u = await prisma.user.findUnique({ where: { id: q.uid! } });
+  if (!u) return r.status(401).json({ error: 'Please sign in' });
+  const en = await prisma.enrollment.findUnique({ where: { userId_courseId: { userId: u.id, courseId: q.params.id } } });
+  if (!en) return r.status(403).json({ error: 'Enrol in this course to review it' });
+  await prisma.review.upsert({ where: { userId_courseId: { userId: u.id, courseId: q.params.id } }, update: { rating: d.rating, comment: d.comment, userName: u.name }, create: { userId: u.id, courseId: q.params.id, userName: u.name, rating: d.rating, comment: d.comment } });
+  r.json({ ok: true });
+}));
+app.get('/api/courses/:id/announcements', auth(), h(async (q, r) => {
+  const u = await prisma.user.findUnique({ where: { id: q.uid! } });
+  if (!u) return r.status(401).json({ error: 'Please sign in' });
+  const en = await prisma.enrollment.findUnique({ where: { userId_courseId: { userId: u.id, courseId: q.params.id } } });
+  if (!en && u.role !== 'ADMIN' && u.role !== 'INSTRUCTOR') return r.status(403).json({ error: 'Enrol in this course to see announcements' });
+  r.json(await prisma.announcement.findMany({ where: { courseId: q.params.id }, orderBy: { createdAt: 'desc' }, take: 30 }));
+}));
+app.post('/api/courses/:id/announcements', auth(), h(async (q, r) => {
+  const c = await ownCourse(q, r, q.params.id); if (!c) return;
+  const d = z.object({ title: z.string().min(3).max(120), body: z.string().min(3).max(2000) }).parse(q.body);
+  const u = await prisma.user.findUnique({ where: { id: q.uid! } });
+  await prisma.announcement.create({ data: { courseId: q.params.id, authorId: q.uid!, authorName: u ? u.name : '', title: d.title, body: d.body } });
+  r.json({ ok: true });
+}));
+app.delete('/api/announcements/:id', auth(), h(async (q, r) => {
+  const a = await prisma.announcement.findUnique({ where: { id: q.params.id } });
+  if (!a) return r.status(404).json({ error: 'Not found' });
+  const u = await prisma.user.findUnique({ where: { id: q.uid! } });
+  if (!u || (u.role !== 'ADMIN' && a.authorId !== u.id)) return r.status(403).json({ error: 'Not allowed' });
+  await prisma.announcement.delete({ where: { id: a.id } });
+  r.json({ ok: true });
+}));
+app.get('/api/instructors', h(async (_q, r) => {
+  const us = await prisma.user.findMany({ where: { role: { in: ['INSTRUCTOR', 'ADMIN'] } }, select: { id: true, name: true, bio: true, avatar: true, title: true, organization: true }, orderBy: { name: 'asc' } });
+  const cs = await prisma.course.findMany({ where: { instructorId: { in: us.map((x) => x.id) } }, select: { instructorId: true } });
+  const n: any = cs.reduce((a: any, c: any) => { a[c.instructorId] = (a[c.instructorId] || 0) + 1; return a; }, {});
+  r.json(us.filter((x) => n[x.id]).map((x) => ({ ...x, courses: n[x.id] })));
+}));
+app.get('/api/instructors/:id', h(async (q, r) => {
+  const u = await prisma.user.findUnique({ where: { id: q.params.id }, select: { id: true, name: true, bio: true, avatar: true, title: true, organization: true, role: true } });
+  if (!u || (u.role !== 'INSTRUCTOR' && u.role !== 'ADMIN')) return r.status(404).json({ error: 'Instructor not found' });
+  const courses = await prisma.course.findMany({ where: { instructorId: u.id }, select: { id: true, title: true, level: true, cpdHours: true } });
+  const { role, ...rest } = u;
+  r.json({ ...rest, courses });
+}));
+
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {
   if (e instanceof z.ZodError) return r.status(400).json({ error: 'Please check the form: ' + e.issues.map((i) => i.path.join('.')).join(', ') });
   if (e.code === 'P2002') return r.status(409).json({ error: 'That email is already registered' });
   console.error(e); r.status(500).json({ error: 'Something went wrong on the server' });
 });
+// GRANDFATHER: accounts that existed before email verification, and admins, count as verified
+prisma.user.updateMany({ where: { emailVerified: false, OR: [{ role: 'ADMIN' }, { createdAt: { lt: new Date('2026-11-23T17:41:28.089Z') } }] }, data: { emailVerified: true } }).catch(() => {});
 app.listen(Number(process.env.PORT) || 4000, () => console.log('IAEP API running'));

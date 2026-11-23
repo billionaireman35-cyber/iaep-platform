@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom';
 import { Menu, X, ChevronDown } from 'lucide-react';
 import { useAuth } from './auth.jsx';
-import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, AdminContent, Signup, Pay, PaymentReturn, CourseView, Community, Teach, Certificate, MyLearning, Profile, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
+import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, AdminContent, Signup, Pay, PaymentReturn, CourseView, Community, Teach, Certificate, MyLearning, Profile, VerifyEmail, InstructorList, InstructorPage, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
 
 export const Logo = ({ size = 40 }) => (
   <span className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/60 bg-navy font-serif text-xs font-bold text-gold" style={{ width: size, height: size }}>
@@ -19,9 +19,10 @@ function Header() {
   const [open, setOpen] = useState(false);
   const [dd, setDd] = useState(false);
   const { user, logout } = useAuth();
-  const acct = [[user ? '/portal' : '/login', user ? 'My portal' : 'Member sign in'], ...(user?.role === 'ADMIN' ? [['/admin', 'Admissions'], ['/messages', 'Messages'], ['/content', 'Manage content']] : [])];
-  if (user && (user.role === 'ADMIN' || user.role === 'INSTRUCTOR')) acct.push(['/teach', 'Teach']);
+  const acct = [[user ? '/portal' : '/login', user ? 'My portal' : 'Member sign in'], ['/instructors', 'Instructors']];
+  if (user && user.role === 'INSTRUCTOR') acct.push(['/teach', 'Teach']);
   if (user) acct.push(['/my-learning', 'My learning'], ['/profile', 'My profile']);
+  const adminLinks = user && user.role === 'ADMIN' ? [['/admin', 'Admissions'], ['/messages', 'Messages'], ['/content', 'Manage content'], ['/teach', 'Courses']] : [];
   const cls = ({ isActive }) => 'whitespace-nowrap py-2 text-sm ' + (isActive ? 'font-semibold text-gold' : 'text-slate-200');
   const close = () => { setOpen(false); setDd(false); };
   return (
@@ -42,6 +43,7 @@ function Header() {
         </nav>
         <button className="p-2 xl:hidden" aria-label="Menu" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
       </div>
+      {adminLinks.length > 0 && <div className="border-t border-white/10 bg-[#141211]"><div className="mx-auto flex max-w-6xl items-center gap-5 overflow-x-auto px-4 py-1"><span className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-widest text-gold">Secretariat</span>{adminLinks.map(([to, t]) => <NavLink key={to} to={to} className={cls}>{t}</NavLink>)}</div></div>}
       {open && (
         <nav className="flex max-h-[75vh] flex-col gap-1 overflow-y-auto border-t border-white/10 bg-[#1B1917] px-6 py-3 xl:hidden" onClick={close}>
           {[...main, ...inst, ...acct].map(([to, t]) => <NavLink key={to} to={to} className={cls}>{t}</NavLink>)}
@@ -53,10 +55,12 @@ function Header() {
 }
 
 export default function App() {
+  const { user } = useAuth();
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1">
+        {user && user.emailVerified === false ? <VerifyEmail /> : (
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/membership" element={<Apply />} />
@@ -81,6 +85,8 @@ export default function App() {
           <Route path="/certificate/:code" element={<Certificate />} />
           <Route path="/my-learning" element={<MyLearning />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/instructors" element={<InstructorList />} />
+          <Route path="/instructor/:id" element={<InstructorPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/portal" element={<Portal />} />
           <Route path="/admin" element={<Admin />} />
@@ -88,6 +94,7 @@ export default function App() {
           <Route path="/messages" element={<AdminMessages />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
+        )}
       </main>
       <footer className="bg-navy px-4 py-12 text-slate-300">
         <div className="mx-auto grid max-w-6xl gap-8 sm:grid-cols-3">

@@ -47,6 +47,11 @@ model User {
   cpdTarget Int @default(40)
   avatar String @default("")
   bio String @default("")
+  emailVerified Boolean @default(false)
+  verifyHash String @default("")
+  verifyExpires DateTime?
+  verifyTries Int @default(0)
+  verifySentAt DateTime?
   createdAt DateTime @default(now())
   enrollments Enrollment[]
   registrations Registration[]
@@ -233,4 +238,24 @@ model Certificate {
   instructorName String @default("")
   issuedAt DateTime @default(now())
   @@unique([userId, courseId])
+}
+
+model Review {
+  id String @id @default(cuid())
+  courseId String
+  userId String
+  userName String
+  rating Int
+  comment String @default("")
+  createdAt DateTime @default(now())
+  @@unique([userId, courseId])
+}
+model Announcement {
+  id String @id @default(cuid())
+  courseId String
+  authorId String
+  authorName String
+  title String
+  body String
+  createdAt DateTime @default(now())
 }
