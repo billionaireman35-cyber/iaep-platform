@@ -24,6 +24,8 @@ model Grade {
   description String
   minYears Int
   cpdHours Int
+  duesUsd Int @default(0)
+  duesNgn Int @default(0)
   users User[]
   applications Application[]
 }

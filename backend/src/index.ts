@@ -125,6 +125,20 @@ app.post('/api/auth/signup', h(async (q, r) => {
   r.json({ ok: true });
 }));
 
+const evSchema = z.object({ title: z.string().min(3), category: z.string().min(2), date: z.coerce.date(), venue: z.string().min(2), speaker: z.string().default(''), cpdHours: z.coerce.number().int().min(0) });
+const coSchema = z.object({ title: z.string().min(3), description: z.string().min(3), level: z.string().min(2), cpdHours: z.coerce.number().int().min(0) });
+const grSchema = z.object({ duesUsd: z.coerce.number().int().min(0), duesNgn: z.coerce.number().int().min(0), cpdHours: z.coerce.number().int().min(0) });
+app.get('/api/admin/content', auth(true), h(async (_q, r) => r.json({
+  events: await prisma.event.findMany({ orderBy: { date: 'asc' } }),
+  courses: await prisma.course.findMany({ orderBy: { title: 'asc' } }),
+  grades: await prisma.grade.findMany({ orderBy: { minYears: 'asc' } }),
+})));
+app.post('/api/admin/events', auth(true), h(async (q, r) => r.json(await prisma.event.create({ data: evSchema.parse(q.body) }))));
+app.delete('/api/admin/events/:id', auth(true), h(async (q, r) => { await prisma.registration.deleteMany({ where: { eventId: q.params.id } }); await prisma.event.delete({ where: { id: q.params.id } }); r.json({ ok: true }); }));
+app.post('/api/admin/courses', auth(true), h(async (q, r) => r.json(await prisma.course.create({ data: coSchema.parse(q.body) }))));
+app.delete('/api/admin/courses/:id', auth(true), h(async (q, r) => { await prisma.enrollment.deleteMany({ where: { courseId: q.params.id } }); await prisma.course.delete({ where: { id: q.params.id } }); r.json({ ok: true }); }));
+app.put('/api/admin/grades/:id', auth(true), h(async (q, r) => r.json(await prisma.grade.update({ where: { id: q.params.id }, data: grSchema.parse(q.body) }))));
+
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {
   if (e instanceof z.ZodError) return r.status(400).json({ error: 'Please check the form: ' + e.issues.map((i) => i.path.join('.')).join(', ') });
   if (e.code === 'P2002') return r.status(409).json({ error: 'That email is already registered' });

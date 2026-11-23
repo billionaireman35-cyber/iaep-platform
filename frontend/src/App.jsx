@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom';
 import { Menu, X, ChevronDown } from 'lucide-react';
 import { useAuth } from './auth.jsx';
-import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, Signup, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
+import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, AdminContent, Signup, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
 
 export const Logo = ({ size = 40 }) => (
   <span className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/60 bg-navy font-serif text-xs font-bold text-gold" style={{ width: size, height: size }}>
@@ -18,7 +18,7 @@ function Header() {
   const [open, setOpen] = useState(false);
   const [dd, setDd] = useState(false);
   const { user, logout } = useAuth();
-  const acct = [[user ? '/portal' : '/login', user ? 'My portal' : 'Member sign in'], ...(user?.role === 'ADMIN' ? [['/admin', 'Admissions'], ['/messages', 'Messages']] : [])];
+  const acct = [[user ? '/portal' : '/login', user ? 'My portal' : 'Member sign in'], ...(user?.role === 'ADMIN' ? [['/admin', 'Admissions'], ['/messages', 'Messages'], ['/content', 'Manage content']] : [])];
   const cls = ({ isActive }) => 'whitespace-nowrap py-2 text-sm ' + (isActive ? 'font-semibold text-gold' : 'text-slate-200');
   const close = () => { setOpen(false); setDd(false); };
   return (
@@ -73,6 +73,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/portal" element={<Portal />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/content" element={<AdminContent />} />
           <Route path="/messages" element={<AdminMessages />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

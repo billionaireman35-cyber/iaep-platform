@@ -342,3 +342,71 @@ export function Signup() {
     </Wrap>
   );
 }
+
+export function AdminContent() {
+  const { user } = useAuth();
+  const [d, setD] = useState({ events: [], courses: [], grades: [] }); const [err, setErr] = useState('');
+  const [ev, setEv] = useState({ title: '', category: 'Webinar', date: '', venue: '', speaker: '', cpdHours: 2 });
+  const [co, setCo] = useState({ title: '', description: '', level: 'Foundation', cpdHours: 6 });
+  const [ge, setGe] = useState({});
+  const load = () => api('/admin/content').then(setD).catch((e) => setErr(e.message));
+  useEffect(() => { load(); }, []);
+  if (!user || user.role !== 'ADMIN') return <Navigate to="/login" />;
+  const call = async (path, method, body) => { setErr(''); try { await api(path, { method, body }); await load(); return true; } catch (x) { setErr(x.message); return false; } };
+  const addEv = async (e) => { e.preventDefault(); if (await call('/admin/events', 'POST', { ...ev, date: new Date(ev.date).toISOString() })) setEv({ ...ev, title: '', date: '', venue: '', speaker: '' }); };
+  const addCo = async (e) => { e.preventDefault(); if (await call('/admin/courses', 'POST', co)) setCo({ ...co, title: '', description: '' }); };
+  const gv = (g, k) => ge[g.id]?.[k] ?? g[k];
+  const gset = (g, k, v) => setGe({ ...ge, [g.id]: { ...ge[g.id], [k]: v } });
+  const row = 'flex items-center justify-between gap-3 rounded border border-slate-200 bg-white p-3 text-sm';
+  return (
+    <Wrap title="Manage content" intro="Add and edit what members see: events, courses and membership dues.">
+      <Err msg={err} />
+      <h2 className="mb-2 font-serif text-xl font-bold">Events</h2>
+      <div className="mb-3 space-y-2">
+        {d.events.length === 0 && <p className="text-sm text-slate-500">No events added yet.</p>}
+        {d.events.map((x) => (
+          <div key={x.id} className={row}><span><b>{x.title}</b><br />{new Date(x.date).toLocaleString()}, {x.venue}, {x.cpdHours} CPD hours</span>
+            <button className="btn bg-red-700" onClick={() => window.confirm('Delete this event?') && call('/admin/events/' + x.id, 'DELETE')}>Delete</button></div>
+        ))}
+      </div>
+      <form onSubmit={addEv} className="mb-8 grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2">
+        <Field label="Title"><input className="inp" required value={ev.title} onChange={(e) => setEv({ ...ev, title: e.target.value })} /></Field>
+        <Field label="Type (Congress, Symposium, Webinar, Workshop)"><input className="inp" required value={ev.category} onChange={(e) => setEv({ ...ev, category: e.target.value })} /></Field>
+        <Field label="Date and time"><input className="inp" type="datetime-local" required value={ev.date} onChange={(e) => setEv({ ...ev, date: e.target.value })} /></Field>
+        <Field label="Venue"><input className="inp" required value={ev.venue} onChange={(e) => setEv({ ...ev, venue: e.target.value })} /></Field>
+        <Field label="Speaker (leave empty if none)"><input className="inp" value={ev.speaker} onChange={(e) => setEv({ ...ev, speaker: e.target.value })} /></Field>
+        <Field label="CPD hours"><input className="inp" type="number" min="0" required value={ev.cpdHours} onChange={(e) => setEv({ ...ev, cpdHours: e.target.value })} /></Field>
+        <div><button className="btn">Add event</button></div>
+      </form>
+      <h2 className="mb-2 font-serif text-xl font-bold">Courses</h2>
+      <div className="mb-3 space-y-2">
+        {d.courses.length === 0 && <p className="text-sm text-slate-500">No courses added yet.</p>}
+        {d.courses.map((x) => (
+          <div key={x.id} className={row}><span><b>{x.title}</b><br />{x.level}, {x.cpdHours} CPD hours</span>
+            <button className="btn bg-red-700" onClick={() => window.confirm('Delete this course?') && call('/admin/courses/' + x.id, 'DELETE')}>Delete</button></div>
+        ))}
+      </div>
+      <form onSubmit={addCo} className="mb-8 grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2">
+        <Field label="Title"><input className="inp" required value={co.title} onChange={(e) => setCo({ ...co, title: e.target.value })} /></Field>
+        <Field label="Level (Foundation, Intermediate, Advanced)"><input className="inp" required value={co.level} onChange={(e) => setCo({ ...co, level: e.target.value })} /></Field>
+        <Field label="CPD hours"><input className="inp" type="number" min="0" required value={co.cpdHours} onChange={(e) => setCo({ ...co, cpdHours: e.target.value })} /></Field>
+        <Field label="Description"><textarea className="inp" rows="3" required value={co.description} onChange={(e) => setCo({ ...co, description: e.target.value })} /></Field>
+        <div><button className="btn">Add course</button></div>
+      </form>
+      <h2 className="mb-2 font-serif text-xl font-bold">Membership grades and annual dues</h2>
+      <div className="space-y-2">
+        {d.grades.map((g) => (
+          <div key={g.id} className="rounded border border-slate-200 bg-white p-3 text-sm">
+            <b>{g.name}</b> <span className="text-slate-500">({g.postNominal}, minimum {g.minYears} years)</span>
+            <div className="mt-2 flex flex-wrap items-end gap-3">
+              <Field label="Dues (USD)"><input className="inp w-28" type="number" min="0" value={gv(g, 'duesUsd')} onChange={(e) => gset(g, 'duesUsd', e.target.value)} /></Field>
+              <Field label="Dues (NGN)"><input className="inp w-32" type="number" min="0" value={gv(g, 'duesNgn')} onChange={(e) => gset(g, 'duesNgn', e.target.value)} /></Field>
+              <Field label="CPD hours a year"><input className="inp w-28" type="number" min="0" value={gv(g, 'cpdHours')} onChange={(e) => gset(g, 'cpdHours', e.target.value)} /></Field>
+              <button className="btn" onClick={() => call('/admin/grades/' + g.id, 'PUT', { duesUsd: gv(g, 'duesUsd'), duesNgn: gv(g, 'duesNgn'), cpdHours: gv(g, 'cpdHours') })}>Save</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Wrap>
+  );
+}

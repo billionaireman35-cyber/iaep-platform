@@ -1,28 +1,33 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 const p = new PrismaClient();
-const grades = [
-  ['student', 'Student Member', 'SIAEP', 'For engineering students in an accredited programme.', 0, 10],
-  ['graduate', 'Graduate Member', 'GIAEP', 'For recent engineering graduates building their practice.', 0, 20],
-  ['associate', 'Associate Member', 'AIAEP', 'For technicians and engineers with a diploma and field experience.', 3, 30],
-  ['professional', 'Professional Member', 'MIAEP', 'For engineers with a degree and verified professional practice.', 5, 40],
-  ['fellow', 'Fellow', 'FIAEP', 'For senior engineers with a distinguished record of leadership.', 15, 40],
+const grades: any[] = [
+  { id: 'student', name: 'Student Member', postNominal: 'Stud.IAEP', description: 'For undergraduate and diploma students currently enrolled in an accredited engineering or applied technology curriculum.', minYears: 0, cpdHours: 10, duesUsd: 15, duesNgn: 15000 },
+  { id: 'graduate', name: 'Graduate / Associate Member', postNominal: 'Grad.IAEP', description: 'Designed for recent engineering graduates beginning structured professional practice and continuous technical development.', minYears: 0, cpdHours: 20, duesUsd: 45, duesNgn: 45000 },
+  { id: 'technician', name: 'Engineering Technician Member', postNominal: 'EngTech.IAEP', description: 'For skilled engineering technicians applying established practical techniques, diagnostics, maintenance and precision technical operations.', minYears: 2, cpdHours: 30, duesUsd: 40, duesNgn: 40000 },
+  { id: 'technologist', name: 'Engineering Technologist Member', postNominal: 'EngTechlg.IAEP', description: 'For applied engineering technologists with advanced practical capability in system design implementation, fabrication and supervisory engineering.', minYears: 3, cpdHours: 30, duesUsd: 65, duesNgn: 65000 },
+  { id: 'professional', name: 'Professional Member', postNominal: 'MIAEP', description: 'The standard full corporate grade for qualified engineers demonstrating sustained competence, ethical responsibility and technical mastery.', minYears: 4, cpdHours: 40, duesUsd: 95, duesNgn: 95000 },
+  { id: 'senior', name: 'Senior Professional Member', postNominal: 'SMIAEP', description: 'For established engineers who have held senior leadership, major infrastructure project management, technical consultancy or research authority.', minYears: 10, cpdHours: 40, duesUsd: 140, duesNgn: 140000 },
+  { id: 'fellow', name: 'Fellow', postNominal: 'FIAEP', description: 'The highest earned professional distinction of the Association, bestowed upon individuals of outstanding national and international eminence in engineering.', minYears: 15, cpdHours: 40, duesUsd: 220, duesNgn: 220000 },
 ];
 async function main() {
-  for (const [id, name, postNominal, description, minYears, cpdHours] of grades)
-    await p.grade.upsert({ where: { id: id as string }, update: {}, create: { id, name, postNominal, description, minYears, cpdHours } as any });
-  if ((await p.course.count()) === 0)
-    await p.course.createMany({ data: [
-      { title: 'Engineering Ethics and Public Safety', level: 'Foundation', cpdHours: 6, description: 'Professional conduct, liability and safety-first decision making.' },
-      { title: 'Project Management for Engineers', level: 'Intermediate', cpdHours: 12, description: 'Planning, risk and delivery of engineering projects.' },
-      { title: 'Asset Integrity and Maintenance', level: 'Advanced', cpdHours: 10, description: 'Inspection, reliability and lifecycle management of plant.' },
-    ] });
-  if ((await p.event.count()) === 0)
-    await p.event.createMany({ data: [
-      { title: 'IAEP World Engineering Congress', category: 'Congress', date: new Date('2027-03-18T09:00:00Z'), venue: 'Ughevwughe Secretariat, Delta State', speaker: 'Council of Fellows', cpdHours: 16 },
-      { title: 'Technical Symposium: Energy Infrastructure', category: 'Symposium', date: new Date('2027-01-28T10:00:00Z'), venue: 'Lagos', speaker: 'To be announced', cpdHours: 8 },
-      { title: 'Webinar: Writing a Strong Membership Application', category: 'Webinar', date: new Date('2026-12-10T15:00:00Z'), venue: 'Online', speaker: 'Admissions Board', cpdHours: 2 },
-    ] });
+  for (const g of grades) {
+    const ex: any = await p.grade.findUnique({ where: { id: g.id } });
+    if (!ex) await p.grade.create({ data: g });
+    else if (!ex.duesUsd) await p.grade.update({ where: { id: g.id }, data: g });
+  }
+  try { await p.grade.delete({ where: { id: 'associate' } }); } catch (e) { /* still referenced, keep */ }
+  try {
+    if (!(await p.page.findUnique({ where: { slug: '_demo_cleaned' } }))) {
+      const ev = await p.event.findMany({ where: { title: { in: ['IAEP World Engineering Congress', 'Technical Symposium: Energy Infrastructure', 'Webinar: Writing a Strong Membership Application'] } }, select: { id: true } });
+      const evIds = ev.map((e) => e.id);
+      if (evIds.length) { await p.registration.deleteMany({ where: { eventId: { in: evIds } } }); await p.event.deleteMany({ where: { id: { in: evIds } } }); }
+      const co = await p.course.findMany({ where: { title: { in: ['Engineering Ethics and Public Safety', 'Project Management for Engineers', 'Asset Integrity and Maintenance'] } }, select: { id: true } });
+      const coIds = co.map((c) => c.id);
+      if (coIds.length) { await p.enrollment.deleteMany({ where: { courseId: { in: coIds } } }); await p.course.deleteMany({ where: { id: { in: coIds } } }); }
+      await p.page.create({ data: { slug: '_demo_cleaned', title: 'internal', body: 'done' } });
+    }
+  } catch (e) { console.error('cleanup skipped', e); }
   const email = process.env.ADMIN_EMAIL?.toLowerCase(), pw = process.env.ADMIN_PASSWORD;
   if (email && pw && !(await p.user.findUnique({ where: { email } })))
     await p.user.create({ data: { email, name: 'IAEP Admin', role: 'ADMIN', passwordHash: await bcrypt.hash(pw, 10) } });
