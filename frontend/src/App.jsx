@@ -1,8 +1,9 @@
+import './loader.js';
 import { useState } from 'react';
 import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom';
 import { Menu, X, ChevronDown } from 'lucide-react';
 import { useAuth } from './auth.jsx';
-import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, AdminContent, Signup, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
+import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, AdminContent, Signup, Pay, PaymentReturn, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
 
 export const Logo = ({ size = 40 }) => (
   <span className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/60 bg-navy font-serif text-xs font-bold text-gold" style={{ width: size, height: size }}>
@@ -11,7 +12,7 @@ export const Logo = ({ size = 40 }) => (
   </span>
 );
 
-const main = [['/membership', 'Membership'], ['/events', 'Events'], ['/learning', 'Learning and CPD'], ['/disciplines', 'Disciplines'], ['/verify', 'Verify credential']];
+const main = [['/membership', 'Membership'], ['/events', 'Events'], ['/learning', 'Learning and CPD'], ['/disciplines', 'Disciplines'], ['/verify', 'Verify credential'], ['/pay', 'Pay dues']];
 const inst = [['/about', 'About IAEP'], ['/governance', 'Governance and Council'], ['/constitution', 'Constitution, Policies and Ethics'], ['/treasury', 'Council Treasury and Finances'], ['/chapters', 'Chapters and Countries'], ['/corporate', 'Corporate Partnerships'], ['/news', 'News and Statements'], ['/contact', 'Contact the Secretariat']];
 
 function Header() {
@@ -32,7 +33,7 @@ function Header() {
           {main.map(([to, t]) => <NavLink key={to} to={to} className={cls}>{t}</NavLink>)}
           <div className="relative">
             <button onClick={() => setDd(!dd)} className="flex items-center gap-1 py-2 text-sm text-slate-200">Institution <ChevronDown size={14} /></button>
-            {dd && <div className="absolute right-0 top-full mt-1 w-72 rounded border border-slate-700 bg-[#0B1E38] py-2 shadow-xl" onClick={close}>{inst.map(([to, t]) => <NavLink key={to} to={to} className="block px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">{t}</NavLink>)}</div>}
+            {dd && <div className="absolute right-0 top-full mt-1 w-72 rounded border border-slate-700 bg-[#2E2A26] py-2 shadow-xl" onClick={close}>{inst.map(([to, t]) => <NavLink key={to} to={to} className="block px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">{t}</NavLink>)}</div>}
           </div>
           {acct.map(([to, t]) => <NavLink key={to} to={to} className={cls}>{t}</NavLink>)}
           {user && <button onClick={logout} className="text-sm text-slate-400">Sign out</button>}
@@ -40,7 +41,7 @@ function Header() {
         <button className="p-2 xl:hidden" aria-label="Menu" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
       </div>
       {open && (
-        <nav className="flex max-h-[75vh] flex-col gap-1 overflow-y-auto border-t border-white/10 bg-[#071324] px-6 py-3 xl:hidden" onClick={close}>
+        <nav className="flex max-h-[75vh] flex-col gap-1 overflow-y-auto border-t border-white/10 bg-[#1B1917] px-6 py-3 xl:hidden" onClick={close}>
           {[...main, ...inst, ...acct].map(([to, t]) => <NavLink key={to} to={to} className={cls}>{t}</NavLink>)}
           {user && <button onClick={logout} className="py-2 text-left text-sm text-slate-400">Sign out</button>}
         </nav>
@@ -70,6 +71,8 @@ export default function App() {
           <Route path="/news" element={<News />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/pay" element={<Pay />} />
+          <Route path="/payment/return" element={<PaymentReturn />} />
           <Route path="/login" element={<Login />} />
           <Route path="/portal" element={<Portal />} />
           <Route path="/admin" element={<Admin />} />
@@ -78,7 +81,23 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
-      <footer className="bg-navy px-4 py-8 text-center text-xs text-slate-400">International Association of Engineering Professionals. Ughevwughe Secretariat, Ughelli South, Delta State, Nigeria.</footer>
+      <footer className="bg-navy px-4 py-12 text-slate-300">
+        <div className="mx-auto grid max-w-6xl gap-8 sm:grid-cols-3">
+          <div>
+            <div className="flex items-center gap-3"><Logo size={44} /><span className="font-serif text-lg font-semibold text-white">IAEP</span></div>
+            <p className="mt-3 text-sm text-slate-400">International Association of Engineering Professionals. Ughevwughe Secretariat, Ughelli South, Delta State, Nigeria.</p>
+          </div>
+          <div>
+            <h3 className="font-sans text-xs font-semibold uppercase tracking-widest text-slate-400">Membership</h3>
+            <div className="mt-3 flex flex-col gap-2 text-sm"><Link to="/membership">Apply for membership</Link><Link to="/pay">Pay dues</Link><Link to="/verify">Verify a credential</Link><Link to="/login">Member sign in</Link></div>
+          </div>
+          <div>
+            <h3 className="font-sans text-xs font-semibold uppercase tracking-widest text-slate-400">The institution</h3>
+            <div className="mt-3 flex flex-col gap-2 text-sm"><Link to="/about">About IAEP</Link><Link to="/governance">Governance and Council</Link><Link to="/constitution">Constitution, Policies and Ethics</Link><Link to="/news">News and Statements</Link><Link to="/contact">Contact the Secretariat</Link></div>
+          </div>
+        </div>
+        <p className="mx-auto mt-10 max-w-6xl border-t border-white/10 pt-6 text-xs text-slate-400">IAEP is an independent international professional association. IAEP membership grades do not substitute for mandatory statutory engineering licences, such as COREN registration in Nigeria.</p>
+      </footer>
     </div>
   );
 }

@@ -82,6 +82,10 @@ app.post('/api/admin/applications/:id/reject', auth(true), h(async (q, r) => {
 app.post('/api/admin/applications/:id/approve', auth(true), h(async (q, r) => {
   const a = await prisma.application.findUnique({ where: { id: q.params.id }, include: { grade: true } });
   if (!a || a.status !== 'PENDING') return r.status(400).json({ error: 'Application is not pending' });
+  if (process.env.FLW_SECRET_KEY) {
+    await prisma.application.update({ where: { id: a.id }, data: { status: 'AWAITING_PAYMENT' } });
+    return r.json({ memberNo: 'Issued after payment', tempPassword: 'The applicant pays on the Pay dues page with reference ' + a.ref, email: a.email });
+  }
   const n = (await prisma.user.count({ where: { role: 'MEMBER' } })) + 1;
   const memberNo = `IAEP-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`;
   const tempPassword = crypto.randomBytes(5).toString('hex');
@@ -138,6 +142,76 @@ app.delete('/api/admin/events/:id', auth(true), h(async (q, r) => { await prisma
 app.post('/api/admin/courses', auth(true), h(async (q, r) => r.json(await prisma.course.create({ data: coSchema.parse(q.body) }))));
 app.delete('/api/admin/courses/:id', auth(true), h(async (q, r) => { await prisma.enrollment.deleteMany({ where: { courseId: q.params.id } }); await prisma.course.delete({ where: { id: q.params.id } }); r.json({ ok: true }); }));
 app.put('/api/admin/grades/:id', auth(true), h(async (q, r) => r.json(await prisma.grade.update({ where: { id: q.params.id }, data: grSchema.parse(q.body) }))));
+
+app.get('/api/public/home', h(async (_q, r) => r.json({
+  grades: await prisma.grade.findMany({ orderBy: [{ duesUsd: 'asc' }] }),
+  events: await prisma.event.findMany({ where: { date: { gte: new Date() } }, orderBy: { date: 'asc' }, take: 3 }),
+  posts: await prisma.post.findMany({ orderBy: { createdAt: 'desc' }, take: 3 }),
+})));
+
+const FLW_BASE = 'https://api.flutterwave.com/v3';
+const flw = async (path: string, init: any = {}) => {
+  const res = await (globalThis as any).fetch(FLW_BASE + path, { ...init, headers: { Authorization: 'Bearer ' + process.env.FLW_SECRET_KEY, 'Content-Type': 'application/json' } });
+  return res.json();
+};
+async function settle(txRef: string, transactionId: string): Promise<any> {
+  const pay = await prisma.payment.findUnique({ where: { txRef } });
+  if (!pay) return { status: 'unknown' };
+  if (pay.status === 'PAID') return { status: 'paid', memberNo: pay.memberNo };
+  const v: any = await flw('/transactions/' + encodeURIComponent(transactionId) + '/verify');
+  const d = v && v.data;
+  if (!v || v.status !== 'success' || !d || d.status !== 'successful' || d.tx_ref !== pay.txRef || d.currency !== pay.currency || Number(d.amount) < pay.amount) return { status: 'failed' };
+  const gate = await prisma.payment.updateMany({ where: { txRef, status: 'PENDING' }, data: { status: 'PROCESSING' } });
+  if (gate.count === 0) {
+    const again = await prisma.payment.findUnique({ where: { txRef } });
+    return again && again.status === 'PAID' ? { status: 'paid', memberNo: again.memberNo } : { status: 'processing' };
+  }
+  try {
+    const a = await prisma.application.findUnique({ where: { id: pay.applicationId }, include: { grade: true } });
+    if (!a) throw new Error('application missing');
+    const n = (await prisma.user.count({ where: { role: 'MEMBER' } })) + 1;
+    const memberNo = `IAEP-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`;
+    await prisma.user.create({ data: { email: a.email, name: a.name, passwordHash: pay.passwordHash, memberNo, gradeId: a.gradeId, postNominal: a.grade.postNominal, cpdTarget: a.grade.cpdHours, disciplineId: a.disciplineId, title: a.jobTitle, organization: a.employer } });
+    await prisma.application.update({ where: { id: a.id }, data: { status: 'APPROVED' } });
+    await prisma.payment.update({ where: { txRef }, data: { status: 'PAID', memberNo, flwId: String(transactionId) } });
+    return { status: 'paid', memberNo };
+  } catch (e) {
+    console.error(e);
+    await prisma.payment.update({ where: { txRef }, data: { status: 'PENDING' } });
+    return { status: 'error' };
+  }
+}
+app.post('/api/payments/start', h(async (q, r) => {
+  const d = z.object({ ref: z.string().min(3), email: z.string().email(), password: z.string().min(8), currency: z.enum(['NGN', 'USD']) }).parse(q.body);
+  if (!process.env.FLW_SECRET_KEY) return r.status(503).json({ error: 'Online payment is not enabled yet. Please contact the Secretariat.' });
+  const a = await prisma.application.findUnique({ where: { ref: d.ref.trim().toUpperCase() }, include: { grade: true } });
+  if (!a || a.email !== d.email.toLowerCase().trim()) return r.status(404).json({ error: 'No application found for that reference and email' });
+  if (a.status === 'APPROVED') return r.status(400).json({ error: 'This membership is already active. Please sign in.' });
+  if (a.status !== 'AWAITING_PAYMENT') return r.status(400).json({ error: 'This application has not been approved for payment yet' });
+  const amount = d.currency === 'NGN' ? a.grade.duesNgn : a.grade.duesUsd;
+  if (!amount) return r.status(400).json({ error: 'Dues for this grade have not been set yet. Please contact the Secretariat.' });
+  if (await prisma.user.findUnique({ where: { email: a.email } })) return r.status(409).json({ error: 'An account with this email already exists. Please sign in.' });
+  const txRef = 'IAEP-PAY-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+  await prisma.payment.create({ data: { txRef, applicationId: a.id, amount, currency: d.currency, passwordHash: await bcrypt.hash(d.password, 10) } });
+  const origin = process.env.FRONTEND_URL || String(q.headers.origin || '');
+  const res: any = await flw('/payments', { method: 'POST', body: JSON.stringify({
+    tx_ref: txRef, amount, currency: d.currency, redirect_url: origin + '/payment/return', payment_options: 'card',
+    customer: { email: a.email, name: a.name },
+    customizations: { title: 'IAEP membership dues', description: a.grade.name + ', annual dues' },
+  }) });
+  if (!res || res.status !== 'success' || !res.data || !res.data.link) return r.status(502).json({ error: 'Could not start the payment. Please try again.' });
+  r.json({ link: res.data.link });
+}));
+app.post('/api/payments/verify', h(async (q, r) => {
+  const d = z.object({ txRef: z.string().min(3), transactionId: z.string().min(1) }).parse(q.body);
+  r.json(await settle(d.txRef, d.transactionId));
+}));
+app.post('/api/payments/webhook', h(async (q, r) => {
+  if (!process.env.FLW_SECRET_HASH || q.headers['verif-hash'] !== process.env.FLW_SECRET_HASH) return r.status(401).end();
+  const d = (q.body && q.body.data) || {};
+  if (d.tx_ref && d.id) await settle(String(d.tx_ref), String(d.id));
+  r.sendStatus(200);
+}));
 
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {
   if (e instanceof z.ZodError) return r.status(400).json({ error: 'Please check the form: ' + e.issues.map((i) => i.path.join('.')).join(', ') });

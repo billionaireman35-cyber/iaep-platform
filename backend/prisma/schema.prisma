@@ -15,6 +15,7 @@ enum AppStatus {
   PENDING
   APPROVED
   REJECTED
+  AWAITING_PAYMENT
 }
 
 model Grade {
@@ -136,4 +137,17 @@ model Page {
   title     String
   body      String   @default("")
   updatedAt DateTime @updatedAt
+}
+
+model Payment {
+  id String @id @default(cuid())
+  txRef String @unique
+  applicationId String
+  amount Int
+  currency String
+  status String @default("PENDING")
+  passwordHash String
+  flwId String?
+  memberNo String?
+  createdAt DateTime @default(now())
 }

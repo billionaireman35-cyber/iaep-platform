@@ -1,8 +1,23 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-body { @apply bg-slate-50 text-slate-800 antialiased; }
-.inp { @apply w-full rounded border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-navy focus:outline-none; }
-.btn { @apply inline-flex items-center justify-center gap-2 rounded bg-navy px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50; }
+@layer base {
+  body { @apply bg-slate-50 font-sans text-slate-800 antialiased; }
+  h1, h2, h3 { @apply font-serif; letter-spacing: -0.01em; }
+}
+.bg-white { background-color: #FFFDF9; }
+.inp { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-clay focus:outline-none focus:ring-2 focus:ring-clay/20; }
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-lg bg-navy px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50; }
 .btn-gold { @apply bg-gold text-navy; }
+.iaep-veil { position: fixed; inset: 0; z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: rgba(245, 244, 237, 0.75); backdrop-filter: blur(2px); }
+.iaep-veil.on { display: flex; }
+.iaep-dots { position: relative; width: 56px; height: 56px; animation: iaep-spin 1.3s linear infinite; }
+.iaep-dots i { position: absolute; left: 50%; top: 50%; width: 11px; height: 11px; margin: -5.5px; border-radius: 50%; background: #B5532F; }
+.iaep-dots i:nth-child(1) { transform: rotate(0deg) translate(22px) scale(1); }
+.iaep-dots i:nth-child(2) { transform: rotate(72deg) translate(22px) scale(0.85); opacity: 0.85; }
+.iaep-dots i:nth-child(3) { transform: rotate(144deg) translate(22px) scale(0.7); opacity: 0.65; }
+.iaep-dots i:nth-child(4) { transform: rotate(216deg) translate(22px) scale(0.55); opacity: 0.45; }
+.iaep-dots i:nth-child(5) { transform: rotate(288deg) translate(22px) scale(0.4); opacity: 0.3; }
+.iaep-note { font-size: 13px; color: #55524A; max-width: 260px; text-align: center; min-height: 18px; }
+@keyframes iaep-spin { to { transform: rotate(360deg); } }
 @media print { header, footer, .no-print { display: none !important; } }

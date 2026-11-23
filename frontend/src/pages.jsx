@@ -15,24 +15,104 @@ const Err = ({ msg }) => msg ? <p className="rounded border border-rose-200 bg-r
 const fmt = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
 export function Home() {
+  const [d, setD] = useState(null);
+  useEffect(() => { api('/public/home').then(setD).catch(() => setD({ grades: [], events: [], posts: [] })); }, []);
+  const pillars = [
+    ['Ethical practice and public welfare', 'Every member subscribes to the Code of Professional Conduct: putting human safety first, protecting the environment, keeping finances transparent and refusing corruption in engineering procurement.'],
+    ['Lifelong professional development', 'Members record continuing professional development in their own portal, work toward the annual hours set for their grade, and take part in congresses, symposia and webinars.'],
+    ['One profession across borders', 'IAEP admits engineers from any country, grades them on training and verified practice, and gives each member a credential that employers and clients can check online.'],
+  ];
+  const grades = d?.grades || [], events = d?.events || [], posts = d?.posts || [];
   return (
     <div>
-      <section className="bg-navy px-4 py-14 text-white">
-        <div className="mx-auto max-w-5xl space-y-5">
-          <Logo size={120} />
-          <h1 className="max-w-2xl font-serif text-3xl font-bold leading-tight sm:text-5xl">Connecting professionals. Advancing engineering. Building the future.</h1>
-          <p className="max-w-xl text-slate-300">IAEP admits qualified engineers, records their continuing professional development, and gives members credentials recognised across borders.</p>
-          <div className="flex flex-wrap gap-3 pt-2">
+      <section className="border-b border-slate-200 px-4 py-16 sm:py-24">
+        <div className="mx-auto max-w-5xl">
+          <Logo size={84} />
+          <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-clay">International Association of Engineering Professionals</p>
+          <h1 className="mt-4 max-w-3xl text-4xl font-medium leading-[1.1] text-slate-900 sm:text-6xl">Connecting professionals. Advancing engineering. Building the future.</h1>
+          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-slate-600">IAEP admits qualified engineers, records their continuing professional development, and gives members credentials recognised across borders.</p>
+          <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/membership" className="btn btn-gold">Apply for membership</Link>
-            <Link to="/login" className="btn border border-white/30 bg-transparent">Member sign in</Link>
+            <Link to="/verify" className="btn">Verify a credential</Link>
           </div>
         </div>
       </section>
-      <section className="mx-auto grid max-w-5xl gap-4 px-4 py-10 sm:grid-cols-3">
-        {[['Membership', 'Five grades from student to Fellow, each with clear entry criteria.', '/membership'], ['Events', 'Congresses, symposia and webinars that count toward your CPD.', '/events'], ['Learning and CPD', 'Courses and a personal CPD record you can keep up to date.', '/learning']].map(([t, d, to]) => (
-          <Link key={t} to={to} className="rounded border border-slate-200 bg-white p-5 hover:border-gold"><h3 className="font-serif text-lg font-bold text-navy">{t}</h3><p className="mt-1 text-sm text-slate-600">{d}</p></Link>
-        ))}
+      <section className="px-4 py-16">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="max-w-2xl text-3xl font-medium text-slate-900 sm:text-4xl">Advancing the engineering profession worldwide</h2>
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {pillars.map(([t, b]) => (
+              <div key={t} className="rounded-xl border border-slate-200 bg-white p-6">
+                <h3 className="text-xl font-medium text-slate-900">{t}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600">{b}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
+      {grades.length > 0 && (
+        <section className="border-t border-slate-200 px-4 py-16">
+          <div className="mx-auto max-w-5xl">
+            <p className="text-xs font-semibold uppercase tracking-widest text-clay">Professional recognition</p>
+            <h2 className="mt-2 text-3xl font-medium text-slate-900 sm:text-4xl">Membership grades</h2>
+            <p className="mt-3 max-w-2xl text-slate-600">From students to distinguished Fellows, each grade recognises verified competence, experience and ethical integrity.</p>
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              {grades.map((g) => (
+                <div key={g.id} className="rounded-xl border border-slate-200 bg-white p-6">
+                  <div className="flex items-baseline justify-between gap-3"><span className="text-xs font-semibold tracking-wide text-clay">{g.postNominal}</span><span className="text-xs text-slate-500">Minimum {g.minYears} {g.minYears === 1 ? 'year' : 'years'} of experience</span></div>
+                  <h3 className="mt-2 text-xl font-medium text-slate-900">{g.name}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{g.description}</p>
+                  {g.duesUsd > 0 && <p className="mt-4 border-t border-slate-200 pt-3 text-sm text-slate-700">Annual dues: <b>${g.duesUsd} USD</b> or <b>₦{Number(g.duesNgn).toLocaleString()} NGN</b></p>}
+                </div>
+              ))}
+            </div>
+            <div className="mt-8"><Link to="/membership" className="btn btn-gold">Apply for membership</Link></div>
+          </div>
+        </section>
+      )}
+      <section className="bg-navy px-4 py-16 text-white">
+        <div className="mx-auto max-w-5xl">
+          <p className="text-xs font-semibold uppercase tracking-widest text-gold">Public credential verification</p>
+          <h2 className="mt-2 max-w-2xl text-3xl font-medium sm:text-4xl">Verify an IAEP member in seconds</h2>
+          <p className="mt-3 max-w-2xl text-slate-300">Employers, regulators and clients can confirm the standing and grade of any IAEP member using their member number.</p>
+          <div className="mt-6"><Link to="/verify" className="btn btn-gold">Verify a credential</Link></div>
+        </div>
+      </section>
+      {events.length > 0 && (
+        <section className="px-4 py-16">
+          <div className="mx-auto max-w-5xl">
+            <p className="text-xs font-semibold uppercase tracking-widest text-clay">Knowledge and continuing education</p>
+            <h2 className="mt-2 text-3xl font-medium text-slate-900 sm:text-4xl">Upcoming events</h2>
+            <div className="mt-8 space-y-4">
+              {events.map((e) => (
+                <div key={e.id} className="rounded-xl border border-slate-200 bg-white p-6">
+                  <p className="text-xs text-slate-500">{e.category}, {fmt(e.date)}, {e.venue}, {e.cpdHours} CPD hours</p>
+                  <h3 className="mt-1 text-xl font-medium text-slate-900">{e.title}</h3>
+                  {e.speaker && <p className="mt-1 text-sm text-slate-600">Speaker: {e.speaker}</p>}
+                </div>
+              ))}
+            </div>
+            <div className="mt-6"><Link to="/events" className="text-sm font-semibold text-clay underline">All events</Link></div>
+          </div>
+        </section>
+      )}
+      {posts.length > 0 && (
+        <section className="border-t border-slate-200 px-4 py-16">
+          <div className="mx-auto max-w-5xl">
+            <h2 className="text-3xl font-medium text-slate-900 sm:text-4xl">News and statements</h2>
+            <div className="mt-8 grid gap-4 sm:grid-cols-3">
+              {posts.map((p) => (
+                <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-6">
+                  <p className="text-xs text-slate-500">{fmt(p.createdAt)}</p>
+                  <h3 className="mt-1 text-lg font-medium text-slate-900">{p.title}</h3>
+                  <p className="mt-2 text-sm text-slate-600">{p.body.length > 160 ? p.body.slice(0, 160) + '...' : p.body}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6"><Link to="/news" className="text-sm font-semibold text-clay underline">All news</Link></div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -106,6 +186,7 @@ export function Events() {
   return (
     <Wrap title="Events" intro="Congresses, symposia and webinars. Attending counts toward your CPD.">
       <Err msg={err} />
+      {items && items.length === 0 && <p className="text-slate-600">No events are scheduled at the moment. New events are announced here by the Secretariat.</p>}
       <div className="space-y-4">{(items || []).map((e) => (
         <ActionCard key={e.id} user={user} title={e.title} meta={`${e.category}, ${fmt(e.date)}, ${e.venue}, ${e.cpdHours} CPD hours`} body={`Speaker: ${e.speaker}`}
           done={user?.registrations?.some((r) => r.eventId === e.id)} doneText="You are registered" actionText="Register"
@@ -120,6 +201,7 @@ export function Courses() {
   return (
     <Wrap title="Learning and CPD" intro="Short courses for working engineers.">
       <Err msg={err} />
+      {items && items.length === 0 && <p className="text-slate-600">No courses are available at the moment. New courses are announced here by the Secretariat. No courses are available yet.</p>}
       <div className="grid gap-4 sm:grid-cols-2">{(items || []).map((c) => (
         <ActionCard key={c.id} user={user} title={c.title} meta={`${c.level}, ${c.cpdHours} CPD hours`} body={c.description}
           done={user?.enrollments?.some((r) => r.courseId === c.id)} doneText="You are enrolled" actionText="Enrol"
@@ -406,6 +488,45 @@ export function AdminContent() {
             </div>
           </div>
         ))}
+      </div>
+    </Wrap>
+  );
+}
+
+export function Pay() {
+  const [f, setF] = useState({ ref: '', email: '', password: '', currency: 'NGN' }); const [err, setErr] = useState('');
+  const go = async (e) => { e.preventDefault(); setErr(''); try { const d = await api('/payments/start', { method: 'POST', body: f }); window.location.href = d.link; } catch (x) { setErr(x.message); } };
+  return (
+    <Wrap title="Pay your membership dues" intro="When the Admissions Board approves your application, pay your first annual dues by card to activate your membership.">
+      <form onSubmit={go} className="max-w-md space-y-4 rounded-xl border border-slate-200 bg-white p-6">
+        <Err msg={err} />
+        <Field label="Application reference (for example APP-1A2B3C)"><input className="inp" required value={f.ref} onChange={(e) => setF({ ...f, ref: e.target.value })} /></Field>
+        <Field label="Email used in your application"><input className="inp" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+        <Field label="Choose a password for your account (at least 8 characters)"><input className="inp" type="password" minLength="8" required value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></Field>
+        <Field label="Pay in"><select className="inp" value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })}><option value="NGN">Nigerian naira (NGN)</option><option value="USD">US dollars (USD)</option></select></Field>
+        <button className="btn btn-gold w-full">Continue to secure card payment</button>
+        <p className="text-xs text-slate-500">You enter your card details on the Flutterwave payment page. IAEP never sees or stores your card number.</p>
+      </form>
+    </Wrap>
+  );
+}
+
+export function PaymentReturn() {
+  const [res, setRes] = useState(null); const [err, setErr] = useState('');
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('status') === 'cancelled' || !p.get('transaction_id') || !p.get('tx_ref')) { setRes({ status: p.get('status') === 'cancelled' ? 'cancelled' : 'failed' }); return; }
+    api('/payments/verify', { method: 'POST', body: { txRef: p.get('tx_ref'), transactionId: p.get('transaction_id') } }).then(setRes).catch((x) => setErr(x.message));
+  }, []);
+  const s = res?.status;
+  return (
+    <Wrap title="Payment" intro="">
+      <Err msg={err} />
+      <div className="max-w-md space-y-4 rounded-xl border border-slate-200 bg-white p-6 text-sm leading-relaxed text-slate-700">
+        {s === 'paid' && (<><h2 className="text-2xl font-medium text-slate-900">Welcome to IAEP</h2><p>Your payment was received and your membership is active.</p><p>Your member number is <b>{res.memberNo}</b>. Keep it safe: anyone can use it to verify your credential.</p><Link to="/login" className="btn btn-gold">Sign in to your portal</Link></>)}
+        {s === 'cancelled' && (<><p>The payment was cancelled and nothing was charged.</p><Link to="/pay" className="btn">Try again</Link></>)}
+        {(s === 'failed' || s === 'unknown') && (<><p>We could not confirm this payment. If you were charged, contact the Secretariat with your application reference and it will be resolved.</p><Link to="/pay" className="btn">Back to payment</Link></>)}
+        {(s === 'processing' || s === 'error') && <p>Your payment is being processed. Please wait a minute and sign in; if you cannot, contact the Secretariat.</p>}
       </div>
     </Wrap>
   );
