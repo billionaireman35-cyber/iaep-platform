@@ -31,7 +31,7 @@ const auth = (admin = false) => (req: Req, res: Response, next: NextFunction) =>
 };
 
 app.get('/api/health', (_q, r) => r.json({ ok: true }));
-app.get('/api/meta', h(async (_q, r) => r.json({ grades: await prisma.grade.findMany(), disciplines: DISCIPLINES })));
+app.get('/api/meta', h(async (_q, r) => { const dv = await prisma.division.findMany({ orderBy: { name: 'asc' } }); r.json({ grades: await prisma.grade.findMany({ orderBy: [{ duesUsd: 'asc' }] }), disciplines: dv.length ? dv.map((x) => ({ id: x.id, name: x.name })) : DISCIPLINES }); }));
 
 app.post('/api/auth/login', h(async (q, r) => {
   const { email, password } = z.object({ email: z.string(), password: z.string() }).parse(q.body);
@@ -214,6 +214,127 @@ app.post('/api/payments/webhook', h(async (q, r) => {
 }));
 
 app.get('/api/divisions', h(async (_q, r) => r.json(await prisma.division.findMany({ orderBy: { name: 'asc' } }))));
+
+const memberOf = async (uid: string) => {
+  const u = await prisma.user.findUnique({ where: { id: uid } });
+  return u && (u.role === 'ADMIN' || u.role === 'INSTRUCTOR' || u.memberNo) ? u : null;
+};
+const mem = async (q: Req, r: Response) => {
+  const u = await memberOf(q.uid!);
+  if (!u) { r.status(403).json({ error: 'This area is for active IAEP members. Complete your membership to join.' }); return null; }
+  return u;
+};
+const staff = async (q: Req, r: Response) => {
+  const u = await prisma.user.findUnique({ where: { id: q.uid! } });
+  if (!u || (u.role !== 'ADMIN' && u.role !== 'INSTRUCTOR')) { r.status(403).json({ error: 'Instructors and administrators only' }); return null; }
+  return u;
+};
+const ownCourse = async (q: Req, r: Response, courseId: string) => {
+  const u = await staff(q, r); if (!u) return null;
+  const c = await prisma.course.findUnique({ where: { id: courseId } });
+  if (!c) { r.status(404).json({ error: 'Course not found' }); return null; }
+  if (u.role !== 'ADMIN' && c.instructorId !== u.id) { r.status(403).json({ error: 'You can only change your own courses' }); return null; }
+  return c;
+};
+const softUid = (q: Request): string | null => {
+  try { return (jwt.verify((q.headers.authorization || '').replace('Bearer ', ''), SECRET) as { id: string }).id; } catch { return null; }
+};
+const httpUrl = z.string().refine((v) => /^https?:\/\//i.test(v), 'Enter a full link starting with https://');
+const optUrl = z.string().default('').refine((v) => v === '' || /^https?:\/\//i.test(v), 'Enter a full link starting with https://');
+
+app.get('/api/courses/:id', h(async (q, r) => {
+  const c = await prisma.course.findUnique({ where: { id: q.params.id } });
+  if (!c) return r.status(404).json({ error: 'Course not found' });
+  const uid = softUid(q);
+  const u = uid ? await memberOf(uid) : null;
+  const enrolled = uid ? !!(await prisma.enrollment.findUnique({ where: { userId_courseId: { userId: uid, courseId: c.id } } })) : false;
+  const canEdit = !!u && (u.role === 'ADMIN' || u.id === c.instructorId);
+  const open = canEdit || (!!u && enrolled);
+  const lessons = await prisma.lesson.findMany({ where: { courseId: c.id }, orderBy: { position: 'asc' } });
+  const classes = await prisma.liveClass.findMany({ where: { courseId: c.id, startsAt: { gte: new Date(Date.now() - 3600000) } }, orderBy: { startsAt: 'asc' } });
+  r.json({
+    course: c, member: !!u, enrolled, canEdit,
+    lessons: lessons.map((l) => (open ? l : { id: l.id, title: l.title, position: l.position, locked: true })),
+    classes: classes.map((x) => (open ? x : { id: x.id, title: x.title, startsAt: x.startsAt, durationMins: x.durationMins, locked: true })),
+  });
+}));
+
+const courseSchema = z.object({ title: z.string().min(3), description: z.string().min(10), level: z.string().min(2), cpdHours: z.coerce.number().int().min(0), divisionId: z.string().min(2) });
+app.get('/api/teach/courses', auth(), h(async (q, r) => {
+  const u = await staff(q, r); if (!u) return;
+  r.json(await prisma.course.findMany({ where: u.role === 'ADMIN' ? {} : { instructorId: u.id }, orderBy: { title: 'asc' }, include: { lessons: { orderBy: { position: 'asc' } }, classes: { orderBy: { startsAt: 'asc' } } } }));
+}));
+app.post('/api/teach/courses', auth(), h(async (q, r) => {
+  const u = await staff(q, r); if (!u) return;
+  const d = courseSchema.parse(q.body);
+  r.json(await prisma.course.create({ data: { ...d, instructorId: u.id, instructorName: u.name } }));
+}));
+app.delete('/api/teach/courses/:id', auth(), h(async (q, r) => {
+  const c = await ownCourse(q, r, q.params.id); if (!c) return;
+  await prisma.enrollment.deleteMany({ where: { courseId: c.id } });
+  await prisma.course.delete({ where: { id: c.id } });
+  r.json({ ok: true });
+}));
+app.post('/api/teach/courses/:id/lessons', auth(), h(async (q, r) => {
+  const c = await ownCourse(q, r, q.params.id); if (!c) return;
+  const d = z.object({ title: z.string().min(2), body: z.string().default(''), videoUrl: optUrl }).parse(q.body);
+  const n = await prisma.lesson.count({ where: { courseId: c.id } });
+  r.json(await prisma.lesson.create({ data: { ...d, courseId: c.id, position: n + 1 } }));
+}));
+app.delete('/api/teach/lessons/:id', auth(), h(async (q, r) => {
+  const l = await prisma.lesson.findUnique({ where: { id: q.params.id } });
+  if (!l) return r.status(404).json({ error: 'Lesson not found' });
+  if (!(await ownCourse(q, r, l.courseId))) return;
+  await prisma.lesson.delete({ where: { id: l.id } }); r.json({ ok: true });
+}));
+app.post('/api/teach/courses/:id/classes', auth(), h(async (q, r) => {
+  const c = await ownCourse(q, r, q.params.id); if (!c) return;
+  const d = z.object({ title: z.string().min(2), startsAt: z.coerce.date(), durationMins: z.coerce.number().int().min(15).max(480), joinUrl: httpUrl }).parse(q.body);
+  r.json(await prisma.liveClass.create({ data: { ...d, courseId: c.id } }));
+}));
+app.delete('/api/teach/classes/:id', auth(), h(async (q, r) => {
+  const k = await prisma.liveClass.findUnique({ where: { id: q.params.id } });
+  if (!k) return r.status(404).json({ error: 'Class not found' });
+  if (!(await ownCourse(q, r, k.courseId))) return;
+  await prisma.liveClass.delete({ where: { id: k.id } }); r.json({ ok: true });
+}));
+
+app.get('/api/admin/instructors', auth(true), h(async (_q, r) => r.json((await prisma.user.findMany({ where: { role: 'INSTRUCTOR' }, orderBy: { name: 'asc' } })).map((u) => ({ id: u.id, name: u.name, email: u.email })))));
+app.post('/api/admin/instructors', auth(true), h(async (q, r) => {
+  const d = z.object({ email: z.string().email() }).parse(q.body);
+  const u = await prisma.user.findUnique({ where: { email: d.email.toLowerCase().trim() } });
+  if (!u) return r.status(404).json({ error: 'No account with that email. Ask them to create an account first.' });
+  if (u.role === 'ADMIN') return r.status(400).json({ error: 'That account is already an administrator' });
+  await prisma.user.update({ where: { id: u.id }, data: { role: 'INSTRUCTOR' } }); r.json({ ok: true });
+}));
+app.delete('/api/admin/instructors/:id', auth(true), h(async (q, r) => { await prisma.user.update({ where: { id: q.params.id }, data: { role: 'MEMBER' } }); r.json({ ok: true }); }));
+
+app.get('/api/threads', auth(), h(async (q, r) => {
+  if (!(await mem(q, r))) return;
+  const courseId = typeof q.query.courseId === 'string' && q.query.courseId ? q.query.courseId : undefined;
+  const divisionId = typeof q.query.divisionId === 'string' && q.query.divisionId ? q.query.divisionId : undefined;
+  const where: any = courseId ? { courseId } : divisionId ? { divisionId, courseId: null } : { courseId: null, divisionId: null };
+  r.json(await prisma.thread.findMany({ where, orderBy: { createdAt: 'desc' }, take: 50, include: { _count: { select: { replies: true } } } }));
+}));
+app.post('/api/threads', auth(), h(async (q, r) => {
+  const u = await mem(q, r); if (!u) return;
+  const d = z.object({ title: z.string().min(3).max(200), body: z.string().min(3).max(5000), courseId: z.string().optional(), divisionId: z.string().optional() }).parse(q.body);
+  r.json(await prisma.thread.create({ data: { title: d.title, body: d.body, courseId: d.courseId || null, divisionId: d.courseId ? null : d.divisionId || null, authorId: u.id, authorName: u.name, authorRole: u.role, authorPost: u.postNominal || '' } }));
+}));
+app.get('/api/threads/:id', auth(), h(async (q, r) => {
+  if (!(await mem(q, r))) return;
+  const t = await prisma.thread.findUnique({ where: { id: q.params.id }, include: { replies: { orderBy: { createdAt: 'asc' } } } });
+  if (!t) return r.status(404).json({ error: 'Discussion not found' });
+  r.json(t);
+}));
+app.post('/api/threads/:id/replies', auth(), h(async (q, r) => {
+  const u = await mem(q, r); if (!u) return;
+  const d = z.object({ body: z.string().min(1).max(5000) }).parse(q.body);
+  if (!(await prisma.thread.findUnique({ where: { id: q.params.id } }))) return r.status(404).json({ error: 'Discussion not found' });
+  r.json(await prisma.reply.create({ data: { body: d.body, threadId: q.params.id, authorId: u.id, authorName: u.name, authorRole: u.role, authorPost: u.postNominal || '' } }));
+}));
+app.delete('/api/admin/threads/:id', auth(true), h(async (q, r) => { await prisma.thread.delete({ where: { id: q.params.id } }); r.json({ ok: true }); }));
+app.delete('/api/admin/replies/:id', auth(true), h(async (q, r) => { await prisma.reply.delete({ where: { id: q.params.id } }); r.json({ ok: true }); }));
 
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {
   if (e instanceof z.ZodError) return r.status(400).json({ error: 'Please check the form: ' + e.issues.map((i) => i.path.join('.')).join(', ') });

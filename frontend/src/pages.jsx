@@ -197,16 +197,32 @@ export function Events() {
 }
 
 export function Courses() {
-  const { user, refresh } = useAuth(); const [items, err] = useList('/courses');
+  const [items, err] = useList('/courses'); const [divs] = useList('/divisions');
+  const [q, setQ] = useState(''); const [dv, setDv] = useState('');
+  const dname = (id) => (divs || []).find((d) => d.id === id)?.name || '';
+  const list = (items || []).filter((c) => (!dv || c.divisionId === dv) && (c.title + ' ' + c.description).toLowerCase().includes(q.trim().toLowerCase()));
   return (
-    <Wrap title="Learning and CPD" intro="Short courses for working engineers.">
+    <Wrap title="Learning and CPD" intro="Courses and live classes taught by experienced engineers and academics. Active members can enrol in any course.">
       <Err msg={err} />
-      {items && items.length === 0 && <p className="text-slate-600">No courses are available at the moment. New courses are announced here by the Secretariat.</p>}
-      <div className="grid gap-4 sm:grid-cols-2">{(items || []).map((c) => (
-        <ActionCard key={c.id} user={user} title={c.title} meta={`${c.level}, ${c.cpdHours} CPD hours`} body={c.description}
-          done={user?.enrollments?.some((r) => r.courseId === c.id)} doneText="You are enrolled" actionText="Enrol"
-          onAct={async () => { await api(`/courses/${c.id}/enroll`, { method: 'POST' }); refresh(); }} />
-      ))}</div>
+      <div className="mb-4 flex flex-wrap gap-3">
+        <input className="inp max-w-xs" placeholder="Search courses" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="inp max-w-xs" value={dv} onChange={(e) => setDv(e.target.value)}>
+          <option value="">All divisions</option>
+          {(divs || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </div>
+      {items && items.length === 0 && <p className="text-slate-600">No courses have been published yet. Courses appear here as instructors add them.</p>}
+      {items && items.length > 0 && list.length === 0 && <p className="text-slate-600">No course matches your search.</p>}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {list.map((c) => (
+          <Link key={c.id} to={'/course/' + c.id} className="block rounded-xl border border-slate-200 bg-white p-5">
+            <p className="text-xs text-slate-500">{dname(c.divisionId) ? dname(c.divisionId) + ', ' : ''}{c.level}, {c.cpdHours} CPD hours</p>
+            <h3 className="mt-1 text-xl font-medium text-slate-900">{c.title}</h3>
+            <p className="mt-2 text-sm text-slate-600">{c.description}</p>
+            {c.instructorName && <p className="mt-3 text-xs font-semibold text-clay">Taught by {c.instructorName}</p>}
+          </Link>
+        ))}
+      </div>
     </Wrap>
   );
 }
@@ -546,6 +562,194 @@ export function PaymentReturn() {
         {(s === 'failed' || s === 'unknown') && (<><p>We could not confirm this payment. If you were charged, contact the Secretariat with your application reference and it will be resolved.</p><Link to="/pay" className="btn">Back to payment</Link></>)}
         {(s === 'processing' || s === 'error') && <p>Your payment is being processed. Please wait a minute and sign in; if you cannot, contact the Secretariat.</p>}
       </div>
+    </Wrap>
+  );
+}
+
+export function CourseView() {
+  const { user, refresh } = useAuth(); const id = window.location.pathname.split('/')[2];
+  const [d, setD] = useState(null); const [err, setErr] = useState('');
+  const load = () => api('/courses/' + id).then(setD).catch((e) => setErr(e.message));
+  useEffect(() => { load(); }, [id, user]);
+  const enroll = async () => { setErr(''); try { await api('/courses/' + id + '/enroll', { method: 'POST' }); await refresh(); await load(); } catch (x) { setErr(x.message); } };
+  if (!d) return <Wrap title="Course" intro=""><Err msg={err} /></Wrap>;
+  const c = d.course; const open = d.enrolled || d.canEdit;
+  return (
+    <Wrap title={c.title} intro={`${c.level}, ${c.cpdHours} CPD hours${c.instructorName ? ', taught by ' + c.instructorName : ''}`}>
+      <Err msg={err} />
+      <div className="mb-6 whitespace-pre-line rounded-xl border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-700">{c.description}</div>
+      <div className="mb-8">
+        {!user && <Link to="/login" className="btn">Sign in to enrol</Link>}
+        {user && !d.member && <p className="text-sm text-slate-700">Courses are open to active members. <Link to="/pay" className="font-semibold text-clay underline">Complete your membership</Link> to enrol.</p>}
+        {user && d.member && !open && <button className="btn btn-gold" onClick={enroll}>Enrol in this course</button>}
+        {user && d.member && d.enrolled && !d.canEdit && <p className="text-sm font-semibold text-clay">You are enrolled in this course.</p>}
+      </div>
+      {d.classes.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-2xl font-medium text-slate-900">Live classes</h2>
+          <div className="space-y-3">{d.classes.map((x) => (
+            <div key={x.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+              <span><b>{x.title}</b><br />{new Date(x.startsAt).toLocaleString()}, {x.durationMins} minutes</span>
+              {x.locked ? <span className="text-xs text-slate-500">Enrol to see the join link</span> : <a className="btn btn-gold" href={x.joinUrl} target="_blank" rel="noopener noreferrer">Join class</a>}
+            </div>
+          ))}</div>
+        </div>
+      )}
+      <div className="mb-8">
+        <h2 className="mb-3 text-2xl font-medium text-slate-900">Lessons</h2>
+        {d.lessons.length === 0 && <p className="text-sm text-slate-600">The instructor has not added lessons yet.</p>}
+        <div className="space-y-3">{d.lessons.map((l) => (
+          <div key={l.id} className="rounded-xl border border-slate-200 bg-white p-5">
+            <h3 className="text-lg font-medium text-slate-900">{l.position}. {l.title}</h3>
+            {l.locked ? <p className="mt-1 text-xs text-slate-500">Enrol to read this lesson</p> : (
+              <>
+                {l.body && <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700">{l.body}</p>}
+                {l.videoUrl && <a className="mt-3 inline-block text-sm font-semibold text-clay underline" href={l.videoUrl} target="_blank" rel="noopener noreferrer">Watch the lesson video</a>}
+              </>
+            )}
+          </div>
+        ))}</div>
+      </div>
+      {d.member && (<><h2 className="mb-3 text-2xl font-medium text-slate-900">Course discussion</h2><Discussion courseId={c.id} /></>)}
+    </Wrap>
+  );
+}
+
+function Discussion({ courseId, divisionId }) {
+  const { user } = useAuth();
+  const [items, setItems] = useState(null); const [err, setErr] = useState(''); const [f, setF] = useState({ title: '', body: '' });
+  const [full, setFull] = useState(null); const [reply, setReply] = useState('');
+  const qs = courseId ? '?courseId=' + courseId : divisionId ? '?divisionId=' + divisionId : '';
+  const load = () => api('/threads' + qs).then(setItems).catch((e) => setErr(e.message));
+  useEffect(() => { setItems(null); setFull(null); setErr(''); load(); }, [qs]);
+  const post = async (e) => { e.preventDefault(); setErr(''); try { await api('/threads', { method: 'POST', body: { ...f, courseId, divisionId } }); setF({ title: '', body: '' }); load(); } catch (x) { setErr(x.message); } };
+  const openT = async (id) => { if (full && full.id === id) { setFull(null); return; } setErr(''); try { setFull(await api('/threads/' + id)); setReply(''); } catch (x) { setErr(x.message); } };
+  const send = async (e) => { e.preventDefault(); setErr(''); try { await api('/threads/' + full.id + '/replies', { method: 'POST', body: { body: reply } }); setReply(''); setFull(await api('/threads/' + full.id)); load(); } catch (x) { setErr(x.message); } };
+  const del = async (path) => { setErr(''); try { await api(path, { method: 'DELETE' }); setFull(null); load(); } catch (x) { setErr(x.message); } };
+  const who = (n, role, post) => (<span className="text-xs text-slate-500"><b className="text-slate-700">{n}</b>{post ? ', ' + post : ''}{role === 'INSTRUCTOR' && <span className="ml-2 rounded-full bg-clay px-2 py-0.5 text-[10px] font-semibold text-white">Instructor</span>}{role === 'ADMIN' && <span className="ml-2 rounded-full bg-navy px-2 py-0.5 text-[10px] font-semibold text-white">Secretariat</span>}</span>);
+  return (
+    <div>
+      <Err msg={err} />
+      <form onSubmit={post} className="mb-5 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+        <input className="inp" placeholder="Start a discussion: your question or topic" required minLength="3" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+        <textarea className="inp" rows="3" placeholder="Add the details" required minLength="3" value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} />
+        <button className="btn">Post discussion</button>
+      </form>
+      {items && items.length === 0 && <p className="text-sm text-slate-600">No discussions yet. Start the first one.</p>}
+      <div className="space-y-3">{(items || []).map((t) => (
+        <div key={t.id} className="rounded-xl border border-slate-200 bg-white p-4">
+          <button className="w-full text-left" onClick={() => openT(t.id)}>
+            <h3 className="text-lg font-medium text-slate-900">{t.title}</h3>
+            <div className="mt-1">{who(t.authorName, t.authorRole, t.authorPost)} <span className="text-xs text-slate-500">, {fmt(t.createdAt)}, {t._count.replies} {t._count.replies === 1 ? 'reply' : 'replies'}</span></div>
+          </button>
+          {full && full.id === t.id && (
+            <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+              <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{full.body}</p>
+              {user?.role === 'ADMIN' && <button className="text-xs text-red-700 underline" onClick={() => window.confirm('Delete this discussion?') && del('/admin/threads/' + full.id)}>Delete discussion</button>}
+              {full.replies.map((x) => (
+                <div key={x.id} className="rounded-lg bg-slate-50 p-3">
+                  <div>{who(x.authorName, x.authorRole, x.authorPost)} <span className="text-xs text-slate-500">, {fmt(x.createdAt)}</span></div>
+                  <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{x.body}</p>
+                  {user?.role === 'ADMIN' && <button className="mt-1 text-xs text-red-700 underline" onClick={() => window.confirm('Delete this reply?') && del('/admin/replies/' + x.id)}>Delete reply</button>}
+                </div>
+              ))}
+              <form onSubmit={send} className="flex flex-col gap-2">
+                <textarea className="inp" rows="2" placeholder="Write a reply" required value={reply} onChange={(e) => setReply(e.target.value)} />
+                <div><button className="btn">Reply</button></div>
+              </form>
+            </div>
+          )}
+        </div>
+      ))}</div>
+    </div>
+  );
+}
+
+export function Community() {
+  const { user, ready } = useAuth(); const [divs] = useList('/divisions'); const [dv, setDv] = useState('');
+  if (!ready) return null; if (!user) return <Navigate to="/login" />;
+  return (
+    <Wrap title="Community" intro="Discuss engineering with fellow members, professors and doctorate holders. Join the general conversation or choose your division.">
+      <select className="inp mb-5 max-w-md" value={dv} onChange={(e) => setDv(e.target.value)}>
+        <option value="">General discussion</option>
+        {(divs || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+      </select>
+      <Discussion divisionId={dv || undefined} />
+    </Wrap>
+  );
+}
+
+function TeachCourse({ c, call }) {
+  const [l, setL] = useState({ title: '', body: '', videoUrl: '' }); const [k, setK] = useState({ title: '', startsAt: '', durationMins: 60, joinUrl: '' });
+  const addL = async (e) => { e.preventDefault(); if (await call('/teach/courses/' + c.id + '/lessons', 'POST', l)) setL({ title: '', body: '', videoUrl: '' }); };
+  const addK = async (e) => { e.preventDefault(); if (await call('/teach/courses/' + c.id + '/classes', 'POST', { ...k, startsAt: new Date(k.startsAt).toISOString() })) setK({ title: '', startsAt: '', durationMins: 60, joinUrl: '' }); };
+  const row = 'flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm';
+  return (
+    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h3 className="text-xl font-medium text-slate-900">{c.title}</h3><p className="text-xs text-slate-500">{c.level}, {c.cpdHours} CPD hours</p></div>
+        <div className="flex gap-2"><Link className="btn" to={'/course/' + c.id}>View</Link><button className="btn bg-red-700" onClick={() => window.confirm('Delete this course with all its lessons and classes?') && call('/teach/courses/' + c.id, 'DELETE')}>Delete</button></div>
+      </div>
+      <div>
+        <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">Lessons</h4>
+        <div className="mb-3 space-y-2">{c.lessons.map((x) => <div key={x.id} className={row}><span>{x.position}. {x.title}</span><button className="text-xs text-red-700 underline" onClick={() => call('/teach/lessons/' + x.id, 'DELETE')}>Remove</button></div>)}</div>
+        <form onSubmit={addL} className="space-y-2">
+          <input className="inp" placeholder="Lesson title" required value={l.title} onChange={(e) => setL({ ...l, title: e.target.value })} />
+          <textarea className="inp" rows="4" placeholder="Lesson text (blank lines start a new paragraph)" value={l.body} onChange={(e) => setL({ ...l, body: e.target.value })} />
+          <input className="inp" placeholder="Video link (optional, starting with https://)" value={l.videoUrl} onChange={(e) => setL({ ...l, videoUrl: e.target.value })} />
+          <button className="btn">Add lesson</button>
+        </form>
+      </div>
+      <div>
+        <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">Live classes</h4>
+        <div className="mb-3 space-y-2">{c.classes.map((x) => <div key={x.id} className={row}><span>{x.title}, {new Date(x.startsAt).toLocaleString()}</span><button className="text-xs text-red-700 underline" onClick={() => call('/teach/classes/' + x.id, 'DELETE')}>Remove</button></div>)}</div>
+        <form onSubmit={addK} className="grid gap-2 sm:grid-cols-2">
+          <input className="inp" placeholder="Class title" required value={k.title} onChange={(e) => setK({ ...k, title: e.target.value })} />
+          <input className="inp" type="datetime-local" required value={k.startsAt} onChange={(e) => setK({ ...k, startsAt: e.target.value })} />
+          <input className="inp" type="number" min="15" max="480" required value={k.durationMins} onChange={(e) => setK({ ...k, durationMins: e.target.value })} />
+          <input className="inp" placeholder="Join link (Zoom, Meet, https://...)" required value={k.joinUrl} onChange={(e) => setK({ ...k, joinUrl: e.target.value })} />
+          <div><button className="btn">Schedule class</button></div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export function Teach() {
+  const { user, ready } = useAuth(); const [divs] = useList('/divisions');
+  const [items, setItems] = useState([]); const [err, setErr] = useState('');
+  const [c, setC] = useState({ title: '', description: '', level: 'Foundation', cpdHours: 6, divisionId: '' });
+  const [ins, setIns] = useState([]); const [email, setEmail] = useState('');
+  const isStaff = !!user && (user.role === 'ADMIN' || user.role === 'INSTRUCTOR');
+  const load = () => { api('/teach/courses').then(setItems).catch((e) => setErr(e.message)); if (user?.role === 'ADMIN') api('/admin/instructors').then(setIns).catch(() => {}); };
+  useEffect(() => { if (isStaff) load(); }, [user]);
+  if (!ready) return null; if (!isStaff) return <Navigate to="/login" />;
+  const call = async (path, method, body) => { setErr(''); try { await api(path, { method, body }); await load(); return true; } catch (x) { setErr(x.message); return false; } };
+  const addC = async (e) => { e.preventDefault(); if (await call('/teach/courses', 'POST', c)) setC({ ...c, title: '', description: '' }); };
+  const addI = async (e) => { e.preventDefault(); if (await call('/admin/instructors', 'POST', { email })) setEmail(''); };
+  return (
+    <Wrap title="Teach" intro="Create courses, add lessons and schedule live classes for IAEP members.">
+      <Err msg={err} />
+      {user.role === 'ADMIN' && (
+        <div className="mb-10">
+          <h2 className="mb-2 text-2xl font-medium text-slate-900">Instructors</h2>
+          <p className="mb-3 text-sm text-slate-600">Enter the email of a person who has created an account. They become an instructor and can create courses.</p>
+          <div className="mb-3 space-y-2">{ins.length === 0 && <p className="text-sm text-slate-500">No instructors yet.</p>}{ins.map((x) => <div key={x.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm"><span><b>{x.name}</b>, {x.email}</span><button className="text-xs text-red-700 underline" onClick={() => call('/admin/instructors/' + x.id, 'DELETE')}>Remove</button></div>)}</div>
+          <form onSubmit={addI} className="flex max-w-md gap-2"><input className="inp" type="email" placeholder="instructor@email.com" required value={email} onChange={(e) => setEmail(e.target.value)} /><button className="btn">Add</button></form>
+        </div>
+      )}
+      <h2 className="mb-3 text-2xl font-medium text-slate-900">New course</h2>
+      <form onSubmit={addC} className="mb-10 grid gap-3 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-2">
+        <Field label="Course title"><input className="inp" required minLength="3" value={c.title} onChange={(e) => setC({ ...c, title: e.target.value })} /></Field>
+        <Field label="Division"><select className="inp" required value={c.divisionId} onChange={(e) => setC({ ...c, divisionId: e.target.value })}><option value="">Choose a division</option>{(divs || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
+        <Field label="Level (Foundation, Intermediate, Advanced)"><input className="inp" required value={c.level} onChange={(e) => setC({ ...c, level: e.target.value })} /></Field>
+        <Field label="CPD hours"><input className="inp" type="number" min="0" required value={c.cpdHours} onChange={(e) => setC({ ...c, cpdHours: e.target.value })} /></Field>
+        <div className="sm:col-span-2"><Field label="What members will learn"><textarea className="inp" rows="4" required minLength="10" value={c.description} onChange={(e) => setC({ ...c, description: e.target.value })} /></Field></div>
+        <div><button className="btn btn-gold">Create course</button></div>
+      </form>
+      <h2 className="mb-3 text-2xl font-medium text-slate-900">{user.role === 'ADMIN' ? 'All courses' : 'Your courses'}</h2>
+      {items.length === 0 && <p className="text-sm text-slate-600">No courses yet.</p>}
+      <div className="space-y-5">{items.map((x) => <TeachCourse key={x.id} c={x} call={call} />)}</div>
     </Wrap>
   );
 }

@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   MEMBER
   ADMIN
+  INSTRUCTOR
 }
 enum AppStatus {
   PENDING
@@ -79,6 +80,12 @@ model Course {
   level String
   cpdHours Int
   enrollments Enrollment[]
+  divisionId String?
+  instructorId String?
+  instructorName String @default("")
+  lessons Lesson[]
+  classes LiveClass[]
+  threads Thread[]
 }
 model Enrollment {
   id String @id @default(cuid())
@@ -157,4 +164,49 @@ model Division {
   name String
   summary String
   subfields String[]
+}
+
+model Lesson {
+  id String @id @default(cuid())
+  courseId String
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title String
+  body String @default("")
+  videoUrl String @default("")
+  position Int @default(0)
+  createdAt DateTime @default(now())
+}
+model LiveClass {
+  id String @id @default(cuid())
+  courseId String
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title String
+  startsAt DateTime
+  durationMins Int @default(60)
+  joinUrl String
+}
+model Thread {
+  id String @id @default(cuid())
+  courseId String?
+  course Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  divisionId String?
+  title String
+  body String
+  authorId String
+  authorName String
+  authorRole String
+  authorPost String @default("")
+  createdAt DateTime @default(now())
+  replies Reply[]
+}
+model Reply {
+  id String @id @default(cuid())
+  threadId String
+  thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorId String
+  authorName String
+  authorRole String
+  authorPost String @default("")
+  body String
+  createdAt DateTime @default(now())
 }
