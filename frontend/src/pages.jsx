@@ -579,6 +579,7 @@ export function CourseView() {
     <Wrap title={c.title} intro={`${c.level}, ${c.cpdHours} CPD hours${c.instructorName ? ', taught by ' + c.instructorName : ''}`}>
       <Err msg={err} />
       <div className="mb-6 whitespace-pre-line rounded-xl border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-700">{c.description}</div>
+      {d.instructor && <div className="mb-6 flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5"><Avatar src={d.instructor.avatar} name={d.instructor.name} size={56} /><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your instructor</p><p className="mt-1 flex flex-wrap items-center gap-2 font-medium text-slate-900">{d.instructor.name}<span className="rounded-full bg-clay px-2 py-0.5 text-[10px] font-semibold text-white">Instructor</span></p>{d.instructor.bio && <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{d.instructor.bio}</p>}</div></div>}
       <div className="mb-8">
         {!user && <Link to="/login" className="btn">Sign in to enrol</Link>}
         {user && !d.member && <p className="text-sm text-slate-700">Courses are open to active members. <Link to="/pay" className="font-semibold text-clay underline">Complete your membership</Link> to enrol.</p>}
@@ -619,18 +620,31 @@ export function CourseView() {
   );
 }
 
+function Avatar({ src, name = '', size = 36 }) {
+  const ini = name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+  return src
+    ? <img src={src} alt="" style={{ width: size, height: size }} className="shrink-0 rounded-full object-cover" />
+    : <span style={{ width: size, height: size, fontSize: Math.round(size * 0.4) }} className="inline-flex shrink-0 items-center justify-center rounded-full bg-clay font-semibold text-white">{ini || '?'}</span>;
+}
+
 function Discussion({ courseId, divisionId }) {
   const { user } = useAuth();
   const [items, setItems] = useState(null); const [err, setErr] = useState(''); const [f, setF] = useState({ title: '', body: '' });
-  const [full, setFull] = useState(null); const [reply, setReply] = useState('');
+  const [full, setFull] = useState(null); const [reply, setReply] = useState(''); const [av, setAv] = useState({});
   const qs = courseId ? '?courseId=' + courseId : divisionId ? '?divisionId=' + divisionId : '';
   const load = () => api('/threads' + qs).then(setItems).catch((e) => setErr(e.message));
   useEffect(() => { setItems(null); setFull(null); setErr(''); load(); }, [qs]);
+  useEffect(() => {
+    const rows = [...(items || []), ...(full ? full.replies : [])];
+    const ids = [...new Set(rows.map((x) => x.authorId))].filter((i) => !(i in av));
+    if (!ids.length) return;
+    api('/avatars?ids=' + ids.join(',')).then((m) => setAv((o) => ({ ...o, ...ids.reduce((a, i) => ({ ...a, [i]: '' }), {}), ...m }))).catch(() => {});
+  }, [items, full]);
   const post = async (e) => { e.preventDefault(); setErr(''); try { await api('/threads', { method: 'POST', body: { ...f, courseId, divisionId } }); setF({ title: '', body: '' }); load(); } catch (x) { setErr(x.message); } };
   const openT = async (id) => { if (full && full.id === id) { setFull(null); return; } setErr(''); try { setFull(await api('/threads/' + id)); setReply(''); } catch (x) { setErr(x.message); } };
   const send = async (e) => { e.preventDefault(); setErr(''); try { await api('/threads/' + full.id + '/replies', { method: 'POST', body: { body: reply } }); setReply(''); setFull(await api('/threads/' + full.id)); load(); } catch (x) { setErr(x.message); } };
   const del = async (path) => { setErr(''); try { await api(path, { method: 'DELETE' }); setFull(null); load(); } catch (x) { setErr(x.message); } };
-  const who = (n, role, post) => (<span className="text-xs text-slate-500"><b className="text-slate-700">{n}</b>{post ? ', ' + post : ''}{role === 'INSTRUCTOR' && <span className="ml-2 rounded-full bg-clay px-2 py-0.5 text-[10px] font-semibold text-white">Instructor</span>}{role === 'ADMIN' && <span className="ml-2 rounded-full bg-navy px-2 py-0.5 text-[10px] font-semibold text-white">Secretariat</span>}</span>);
+  const who = (n, role, post, id) => (<span className="inline-flex flex-wrap items-center gap-2 text-xs text-slate-500"><Avatar src={av[id]} name={n} size={26} /><b className="text-slate-700">{n}</b>{post ? ', ' + post : ''}{role === 'INSTRUCTOR' && <span className="rounded-full bg-clay px-2 py-0.5 text-[10px] font-semibold text-white">Instructor</span>}{role === 'ADMIN' && <span className="rounded-full bg-navy px-2 py-0.5 text-[10px] font-semibold text-white">Secretariat</span>}</span>);
   return (
     <div>
       <Err msg={err} />
@@ -644,7 +658,7 @@ function Discussion({ courseId, divisionId }) {
         <div key={t.id} className="rounded-xl border border-slate-200 bg-white p-4">
           <button className="w-full text-left" onClick={() => openT(t.id)}>
             <h3 className="text-lg font-medium text-slate-900">{t.title}</h3>
-            <div className="mt-1">{who(t.authorName, t.authorRole, t.authorPost)} <span className="text-xs text-slate-500">, {fmt(t.createdAt)}, {t._count.replies} {t._count.replies === 1 ? 'reply' : 'replies'}</span></div>
+            <div className="mt-1">{who(t.authorName, t.authorRole, t.authorPost, t.authorId)} <span className="text-xs text-slate-500">, {fmt(t.createdAt)}, {t._count.replies} {t._count.replies === 1 ? 'reply' : 'replies'}</span></div>
           </button>
           {full && full.id === t.id && (
             <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
@@ -652,7 +666,7 @@ function Discussion({ courseId, divisionId }) {
               {user?.role === 'ADMIN' && <button className="text-xs text-red-700 underline" onClick={() => window.confirm('Delete this discussion?') && del('/admin/threads/' + full.id)}>Delete discussion</button>}
               {full.replies.map((x) => (
                 <div key={x.id} className="rounded-lg bg-slate-50 p-3">
-                  <div>{who(x.authorName, x.authorRole, x.authorPost)} <span className="text-xs text-slate-500">, {fmt(x.createdAt)}</span></div>
+                  <div>{who(x.authorName, x.authorRole, x.authorPost, x.authorId)} <span className="text-xs text-slate-500">, {fmt(x.createdAt)}</span></div>
                   <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{x.body}</p>
                   {user?.role === 'ADMIN' && <button className="mt-1 text-xs text-red-700 underline" onClick={() => window.confirm('Delete this reply?') && del('/admin/replies/' + x.id)}>Delete reply</button>}
                 </div>
@@ -779,6 +793,99 @@ export function Certificate() {
         <p className="mt-6 border-t border-slate-200 pt-4 text-xs text-slate-500">Certificate code {d.code}. Verify at {window.location.origin}/certificate/{d.code}</p>
       </div>
       <div className="no-print mt-6 text-center"><button className="btn btn-gold" onClick={() => window.print()}>Print or save as PDF</button></div>
+    </Wrap>
+  );
+}
+
+export function MyLearning() {
+  const { user, ready } = useAuth(); const [d, setD] = useState(null); const [err, setErr] = useState('');
+  useEffect(() => { if (user) api('/my/learning').then(setD).catch((e) => setErr(e.message)); }, [user]);
+  if (!ready) return null; if (!user) return <Navigate to="/login" />;
+  const done = user.cpdDone || 0, target = user.cpdTarget || 0; const pct = target ? Math.min(100, Math.round((done / target) * 100)) : 0;
+  const bar = (p) => <div className="h-2 rounded-full bg-slate-200"><div className="h-2 rounded-full bg-clay" style={{ width: p + '%' }} /></div>;
+  return (
+    <Wrap title="My learning" intro="Your courses, upcoming classes, certificates and CPD progress in one place.">
+      <Err msg={err} />
+      <div className="mb-8 rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="text-xl font-medium text-slate-900">CPD this year</h2>
+        <p className="mt-1 text-sm text-slate-600">{done} of {target} hours recorded</p>
+        <div className="mt-3">{bar(pct)}</div>
+      </div>
+      {d && d.classes.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-2xl font-medium text-slate-900">Upcoming live classes</h2>
+          <div className="space-y-3">{d.classes.map((x) => (
+            <div key={x.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+              <span><b>{x.title}</b><br />{x.courseTitle}, {new Date(x.startsAt).toLocaleString()}</span>
+              <a className="btn btn-gold" href={x.joinUrl} target="_blank" rel="noopener noreferrer">Join class</a>
+            </div>
+          ))}</div>
+        </div>
+      )}
+      <h2 className="mb-3 text-2xl font-medium text-slate-900">My courses</h2>
+      {d && d.courses.length === 0 && <p className="mb-8 text-sm text-slate-600">You are not enrolled in any course yet. <Link to="/learning" className="font-semibold text-clay underline">Browse courses</Link>.</p>}
+      <div className="mb-8 grid gap-4 sm:grid-cols-2">{(d ? d.courses : []).map((c) => {
+        const p = c.total ? Math.round((c.done / c.total) * 100) : 0;
+        return (
+          <Link key={c.id} to={'/course/' + c.id} className="block rounded-xl border border-slate-200 bg-white p-5">
+            <p className="text-xs text-slate-500">{c.level}, {c.cpdHours} CPD hours</p>
+            <h3 className="mt-1 text-lg font-medium text-slate-900">{c.title}</h3>
+            <div className="mt-3">{bar(c.certificate ? 100 : p)}</div>
+            <p className="mt-2 text-xs font-semibold text-clay">{c.certificate ? 'Completed' : c.total ? c.done + ' of ' + c.total + ' lessons' : 'Lessons coming soon'}</p>
+          </Link>
+        );
+      })}</div>
+      <h2 className="mb-3 text-2xl font-medium text-slate-900">My certificates</h2>
+      {d && d.certificates.length === 0 && <p className="text-sm text-slate-600">Complete every lesson of a course to earn your first certificate.</p>}
+      <div className="space-y-3">{(d ? d.certificates : []).map((x) => (
+        <div key={x.code} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+          <span><b>{x.courseTitle}</b><br />{x.hours} CPD hours, issued {fmt(x.issuedAt)}</span>
+          <Link className="btn" to={'/certificate/' + x.code}>View certificate</Link>
+        </div>
+      ))}</div>
+    </Wrap>
+  );
+}
+
+export function Profile() {
+  const { user, ready, refresh } = useAuth(); const [bio, setBio] = useState(null); const [err, setErr] = useState(''); const [ok, setOk] = useState('');
+  useEffect(() => { if (user && bio === null) setBio(user.bio || ''); }, [user]);
+  if (!ready) return null; if (!user) return <Navigate to="/login" />;
+  const send = async (avatar) => { setErr(''); setOk(''); try { await api('/me/avatar', { method: 'PUT', body: { avatar } }); await refresh(); setOk(avatar ? 'Photo updated' : 'Photo removed'); } catch (x) { setErr(x.message); } };
+  const pick = (e) => {
+    const file = e.target.files && e.target.files[0]; if (!file) return;
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(img.width, img.height), cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
+      const cx = cv.getContext('2d'); cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, 128, 128);
+      cx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 128, 128);
+      URL.revokeObjectURL(url); send(cv.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = () => setErr('That file could not be read as an image');
+    img.src = url;
+  };
+  const saveBio = async (e) => { e.preventDefault(); setErr(''); setOk(''); try { await api('/me/profile', { method: 'PUT', body: { bio } }); await refresh(); setOk('Profile saved'); } catch (x) { setErr(x.message); } };
+  return (
+    <Wrap title="My profile" intro="Your photo and introduction appear beside your posts in the community and on courses you teach.">
+      <Err msg={err} />
+      {ok && <p className="mb-3 text-sm font-semibold text-clay">{ok}</p>}
+      <div className="max-w-md space-y-5 rounded-xl border border-slate-200 bg-white p-6">
+        <div className="flex items-center gap-4">
+          <Avatar src={user.avatar} name={user.name} size={72} />
+          <div>
+            <p className="font-medium text-slate-900">{user.name}</p>
+            <p className="text-xs text-slate-500">{user.role === 'INSTRUCTOR' ? 'Instructor' : user.role === 'ADMIN' ? 'Secretariat' : 'Member'}{user.memberNo ? ', ' + user.memberNo : ''}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <label className="btn cursor-pointer">Choose a photo<input type="file" accept="image/*" className="hidden" onChange={pick} /></label>
+          {user.avatar && <button className="btn bg-slate-500" onClick={() => send('')}>Remove photo</button>}
+        </div>
+        <form onSubmit={saveBio} className="space-y-3">
+          <Field label="About you (shown on courses you teach)"><textarea className="inp" rows="4" maxLength="600" value={bio || ''} onChange={(e) => setBio(e.target.value)} /></Field>
+          <button className="btn btn-gold">Save</button>
+        </form>
+      </div>
     </Wrap>
   );
 }

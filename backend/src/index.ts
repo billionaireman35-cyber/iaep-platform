@@ -254,8 +254,9 @@ app.get('/api/courses/:id', h(async (q, r) => {
   const classes = await prisma.liveClass.findMany({ where: { courseId: c.id, startsAt: { gte: new Date(Date.now() - 3600000) } }, orderBy: { startsAt: 'asc' } });
   const done = uid ? (await prisma.lessonProgress.findMany({ where: { userId: uid, courseId: c.id } })).map((x) => x.lessonId) : [];
   const cert = uid ? await prisma.certificate.findUnique({ where: { userId_courseId: { userId: uid, courseId: c.id } } }) : null;
+  const ins = c.instructorId ? await prisma.user.findUnique({ where: { id: c.instructorId } }) : null;
   r.json({
-    course: c, member: !!u, enrolled, canEdit, done, certificate: cert ? cert.code : null,
+    course: c, member: !!u, enrolled, canEdit, done, certificate: cert ? cert.code : null, instructor: ins ? { name: ins.name, bio: ins.bio, avatar: ins.avatar } : null,
     lessons: lessons.map((l) => (open ? l : { id: l.id, title: l.title, position: l.position, locked: true })),
     classes: classes.map((x) => (open ? x : { id: x.id, title: x.title, startsAt: x.startsAt, durationMins: x.durationMins, locked: true })),
   });
@@ -368,6 +369,42 @@ app.get('/api/certificates/:code', h(async (q, r) => {
   const c = await prisma.certificate.findUnique({ where: { code: q.params.code.trim().toUpperCase() } });
   if (!c) return r.json({ valid: false });
   r.json({ valid: true, code: c.code, memberName: c.memberName, memberNo: c.memberNo, courseTitle: c.courseTitle, hours: c.hours, instructorName: c.instructorName, issuedAt: c.issuedAt });
+}));
+
+app.put('/api/me/avatar', auth(), h(async (q, r) => {
+  const d = z.object({ avatar: z.string().max(60000).refine((v) => v === '' || /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(v), 'Invalid image') }).parse(q.body);
+  await prisma.user.update({ where: { id: q.uid! }, data: { avatar: d.avatar } });
+  r.json({ ok: true });
+}));
+app.put('/api/me/profile', auth(), h(async (q, r) => {
+  const d = z.object({ bio: z.string().max(600) }).parse(q.body);
+  await prisma.user.update({ where: { id: q.uid! }, data: { bio: d.bio } });
+  r.json({ ok: true });
+}));
+app.get('/api/avatars', auth(), h(async (q, r) => {
+  if (!(await mem(q, r))) return;
+  const ids = String(q.query.ids || '').split(',').filter(Boolean).slice(0, 60);
+  const us = await prisma.user.findMany({ where: { id: { in: ids }, avatar: { not: '' } }, select: { id: true, avatar: true } });
+  r.json(us.reduce((a: any, u) => { a[u.id] = u.avatar; return a; }, {}));
+}));
+app.get('/api/my/learning', auth(), h(async (q, r) => {
+  const en = await prisma.enrollment.findMany({ where: { userId: q.uid! } });
+  const ids = en.map((e) => e.courseId);
+  const courses = await prisma.course.findMany({ where: { id: { in: ids } }, include: { lessons: { select: { id: true } } } });
+  const prog = await prisma.lessonProgress.findMany({ where: { userId: q.uid!, courseId: { in: ids } } });
+  const certs = await prisma.certificate.findMany({ where: { userId: q.uid! }, orderBy: { issuedAt: 'desc' } });
+  const classes = await prisma.liveClass.findMany({ where: { courseId: { in: ids }, startsAt: { gte: new Date(Date.now() - 3600000) } }, orderBy: { startsAt: 'asc' }, take: 10 });
+  const titles = courses.reduce((a: any, c) => { a[c.id] = c.title; return a; }, {});
+  r.json({
+    courses: courses.map((c) => {
+      const lessonIds = c.lessons.map((l) => l.id);
+      const done = prog.filter((p) => lessonIds.includes(p.lessonId)).length;
+      const cert = certs.find((x) => x.courseId === c.id);
+      return { id: c.id, title: c.title, level: c.level, cpdHours: c.cpdHours, instructorName: c.instructorName, total: lessonIds.length, done, certificate: cert ? cert.code : null };
+    }),
+    certificates: certs.map((x) => ({ code: x.code, courseTitle: x.courseTitle, hours: x.hours, issuedAt: x.issuedAt })),
+    classes: classes.map((x) => ({ ...x, courseTitle: titles[x.courseId] })),
+  });
 }));
 
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {

@@ -15,7 +15,9 @@ function show() {
 }
 function hide() { if (!veil) return; veil.classList.remove('on'); note.textContent = ''; clearTimeout(slow); }
 const orig = window.fetch.bind(window);
-window.fetch = (...a) => {
+window.fetch = (input, ...a) => {
+  const u = typeof input === 'string' ? input : (input && input.url) || '';
+  if (u.includes('/avatars')) return orig(input, ...a);
   n++; if (n === 1) timer = setTimeout(show, 200);
-  return orig(...a).finally(() => { n--; if (n <= 0) { n = 0; clearTimeout(timer); hide(); } });
+  return orig(input, ...a).finally(() => { n--; if (n <= 0) { n = 0; clearTimeout(timer); hide(); } });
 };

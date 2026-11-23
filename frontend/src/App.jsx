@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom';
 import { Menu, X, ChevronDown } from 'lucide-react';
 import { useAuth } from './auth.jsx';
-import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, AdminContent, Signup, Pay, PaymentReturn, CourseView, Community, Teach, Certificate, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
+import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, AdminContent, Signup, Pay, PaymentReturn, CourseView, Community, Teach, Certificate, MyLearning, Profile, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
 
 export const Logo = ({ size = 40 }) => (
   <span className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/60 bg-navy font-serif text-xs font-bold text-gold" style={{ width: size, height: size }}>
@@ -21,6 +21,7 @@ function Header() {
   const { user, logout } = useAuth();
   const acct = [[user ? '/portal' : '/login', user ? 'My portal' : 'Member sign in'], ...(user?.role === 'ADMIN' ? [['/admin', 'Admissions'], ['/messages', 'Messages'], ['/content', 'Manage content']] : [])];
   if (user && (user.role === 'ADMIN' || user.role === 'INSTRUCTOR')) acct.push(['/teach', 'Teach']);
+  if (user) acct.push(['/my-learning', 'My learning'], ['/profile', 'My profile']);
   const cls = ({ isActive }) => 'whitespace-nowrap py-2 text-sm ' + (isActive ? 'font-semibold text-gold' : 'text-slate-200');
   const close = () => { setOpen(false); setDd(false); };
   return (
@@ -78,6 +79,8 @@ export default function App() {
           <Route path="/community" element={<Community />} />
           <Route path="/teach" element={<Teach />} />
           <Route path="/certificate/:code" element={<Certificate />} />
+          <Route path="/my-learning" element={<MyLearning />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/login" element={<Login />} />
           <Route path="/portal" element={<Portal />} />
           <Route path="/admin" element={<Admin />} />

@@ -45,6 +45,8 @@ model User {
   title String?
   organization String?
   cpdTarget Int @default(40)
+  avatar String @default("")
+  bio String @default("")
   createdAt DateTime @default(now())
   enrollments Enrollment[]
   registrations Registration[]
