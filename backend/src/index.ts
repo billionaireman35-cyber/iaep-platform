@@ -117,6 +117,14 @@ app.put('/api/admin/pages/:slug', auth(true), h(async (q, r) => {
   r.json(await prisma.page.upsert({ where: { slug: q.params.slug }, update: d, create: { slug: q.params.slug, ...d } }));
 }));
 
+app.post('/api/auth/signup', h(async (q, r) => {
+  const d = z.object({ name: z.string().min(2), email: z.string().email(), password: z.string().min(8) }).parse(q.body);
+  const email = d.email.toLowerCase();
+  if (await prisma.user.findUnique({ where: { email } })) return r.status(409).json({ error: 'An account with this email already exists' });
+  await prisma.user.create({ data: { email, name: d.name, passwordHash: await bcrypt.hash(d.password, 10) } });
+  r.json({ ok: true });
+}));
+
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {
   if (e instanceof z.ZodError) return r.status(400).json({ error: 'Please check the form: ' + e.issues.map((i) => i.path.join('.')).join(', ') });
   if (e.code === 'P2002') return r.status(409).json({ error: 'That email is already registered' });

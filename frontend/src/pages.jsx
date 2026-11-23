@@ -140,7 +140,7 @@ export function Login() {
         <Field label="Email"><input className="inp" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
         <Field label="Password"><input className="inp" type="password" required value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
         <button className="btn w-full">Sign in</button>
-        <p className="text-xs text-slate-500">Not a member yet? <Link to="/membership" className="underline">Apply for membership</Link>.</p>
+        <p className="text-xs text-slate-500">New here? <Link to="/signup" className="underline">Create an account</Link>. Not a member yet? <Link to="/membership" className="underline">Apply for membership</Link>.</p>
       </form>
     </Wrap>
   );
@@ -313,7 +313,7 @@ function InfoPage({ slug, title, intro }) {
           <div className="flex gap-2"><button className="btn">Save page</button><button type="button" className="btn bg-slate-500" onClick={() => setEdit(false)}>Cancel</button></div>
         </form>
       ) : (
-        <div className="whitespace-pre-line rounded border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-700">{p?.body || 'This section is being prepared. Please check back soon.'}</div>
+        <div className="whitespace-pre-line rounded border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-700">{p?.body}</div>
       )}
       {admin && !edit && <button className="btn" onClick={() => setEdit(true)}>Edit this page</button>}
     </Wrap>
@@ -324,3 +324,21 @@ export const Constitution = () => <InfoPage slug="constitution" title="Constitut
 export const Treasury = () => <InfoPage slug="treasury" title="Council Treasury and Finances" intro="Financial information published by the Secretariat." />;
 export const Chapters = () => <InfoPage slug="chapters" title="Chapters and Countries" intro="Where IAEP members are organised around the world." />;
 export const Corporate = () => <InfoPage slug="corporate" title="Corporate Partnerships" intro="Organisations that work with IAEP." />;
+
+export function Signup() {
+  const { login, user } = useAuth(); const [f, setF] = useState({ name: '', email: '', password: '' }); const [err, setErr] = useState('');
+  if (user) return <Navigate to="/portal" />;
+  const go = async (e) => { e.preventDefault(); setErr(''); try { await api('/auth/signup', { method: 'POST', body: f }); await login(f.email.toLowerCase(), f.password); } catch (x) { setErr(x.message); } };
+  return (
+    <Wrap title="Create your account" intro="Create a sign-in for the IAEP member portal.">
+      <form onSubmit={go} className="max-w-sm space-y-4 rounded border border-slate-200 bg-white p-5">
+        <Err msg={err} />
+        <Field label="Full name"><input className="inp" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+        <Field label="Email"><input className="inp" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+        <Field label="Password (at least 8 characters)"><input className="inp" type="password" minLength="8" required value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></Field>
+        <button className="btn w-full">Create account</button>
+        <p className="text-xs text-slate-500">Already have an account? <Link to="/login" className="underline">Sign in</Link>.</p>
+      </form>
+    </Wrap>
+  );
+}
