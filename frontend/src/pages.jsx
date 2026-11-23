@@ -572,8 +572,9 @@ export function CourseView() {
   const load = () => api('/courses/' + id).then(setD).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, [id, user]);
   const enroll = async () => { setErr(''); try { await api('/courses/' + id + '/enroll', { method: 'POST' }); await refresh(); await load(); } catch (x) { setErr(x.message); } };
+  const complete = async (lid) => { setErr(''); try { await api('/lessons/' + lid + '/complete', { method: 'POST' }); await load(); await refresh(); } catch (x) { setErr(x.message); } };
   if (!d) return <Wrap title="Course" intro=""><Err msg={err} /></Wrap>;
-  const c = d.course; const open = d.enrolled || d.canEdit;
+  const c = d.course; const open = d.enrolled || d.canEdit; const doneIds = d.done || [];
   return (
     <Wrap title={c.title} intro={`${c.level}, ${c.cpdHours} CPD hours${c.instructorName ? ', taught by ' + c.instructorName : ''}`}>
       <Err msg={err} />
@@ -584,6 +585,8 @@ export function CourseView() {
         {user && d.member && !open && <button className="btn btn-gold" onClick={enroll}>Enrol in this course</button>}
         {user && d.member && d.enrolled && !d.canEdit && <p className="text-sm font-semibold text-clay">You are enrolled in this course.</p>}
       </div>
+      {d.certificate && <div className="mb-8 rounded-xl border border-clay bg-white p-5"><h2 className="text-2xl font-medium text-slate-900">Course completed</h2><p className="mt-1 text-sm text-slate-700">Your CPD hours have been added to your record.</p><Link to={'/certificate/' + d.certificate} className="btn btn-gold mt-3">View your certificate</Link></div>}
+      {d.enrolled && !d.canEdit && d.lessons.length > 0 && !d.certificate && <p className="mb-6 text-sm text-slate-600">Progress: {doneIds.length} of {d.lessons.length} lessons completed</p>}
       {d.classes.length > 0 && (
         <div className="mb-8">
           <h2 className="mb-3 text-2xl font-medium text-slate-900">Live classes</h2>
@@ -605,6 +608,7 @@ export function CourseView() {
               <>
                 {l.body && <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700">{l.body}</p>}
                 {l.videoUrl && <a className="mt-3 inline-block text-sm font-semibold text-clay underline" href={l.videoUrl} target="_blank" rel="noopener noreferrer">Watch the lesson video</a>}
+                {d.enrolled && !d.canEdit && (doneIds.includes(l.id) ? <p className="mt-3 text-sm font-semibold text-clay">Completed</p> : <button className="btn mt-3" onClick={() => complete(l.id)}>Mark as complete</button>)}
               </>
             )}
           </div>
@@ -750,6 +754,31 @@ export function Teach() {
       <h2 className="mb-3 text-2xl font-medium text-slate-900">{user.role === 'ADMIN' ? 'All courses' : 'Your courses'}</h2>
       {items.length === 0 && <p className="text-sm text-slate-600">No courses yet.</p>}
       <div className="space-y-5">{items.map((x) => <TeachCourse key={x.id} c={x} call={call} />)}</div>
+    </Wrap>
+  );
+}
+
+export function Certificate() {
+  const code = window.location.pathname.split('/')[2]; const [d, setD] = useState(null); const [err, setErr] = useState('');
+  useEffect(() => { api('/certificates/' + encodeURIComponent(code)).then(setD).catch((e) => setErr(e.message)); }, [code]);
+  if (!d) return <Wrap title="Certificate" intro=""><Err msg={err} /></Wrap>;
+  if (!d.valid) return <Wrap title="Certificate" intro=""><p className="text-slate-700">This certificate code is not valid. Check the code and try again.</p></Wrap>;
+  return (
+    <Wrap title="Certificate of completion" intro="">
+      <div className="mx-auto max-w-2xl rounded-xl border-4 border-double border-clay bg-white p-8 text-center sm:p-12">
+        <div className="flex justify-center"><Logo size={64} /></div>
+        <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-clay">International Association of Engineering Professionals</p>
+        <h2 className="mt-4 text-3xl font-medium text-slate-900">Certificate of Completion</h2>
+        <p className="mt-6 text-sm text-slate-600">This certifies that</p>
+        <p className="mt-2 font-serif text-3xl font-medium text-slate-900">{d.memberName}</p>
+        {d.memberNo && <p className="mt-1 text-xs text-slate-500">Member number {d.memberNo}</p>}
+        <p className="mt-6 text-sm text-slate-600">has successfully completed the course</p>
+        <p className="mt-2 font-serif text-2xl font-medium text-slate-900">{d.courseTitle}</p>
+        <p className="mt-4 text-sm text-slate-700">{d.hours} continuing professional development hours{d.instructorName ? ', taught by ' + d.instructorName : ''}</p>
+        <p className="mt-6 text-sm text-slate-700">Issued on {fmt(d.issuedAt)}</p>
+        <p className="mt-6 border-t border-slate-200 pt-4 text-xs text-slate-500">Certificate code {d.code}. Verify at {window.location.origin}/certificate/{d.code}</p>
+      </div>
+      <div className="no-print mt-6 text-center"><button className="btn btn-gold" onClick={() => window.print()}>Print or save as PDF</button></div>
     </Wrap>
   );
 }

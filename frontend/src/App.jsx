@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom';
 import { Menu, X, ChevronDown } from 'lucide-react';
 import { useAuth } from './auth.jsx';
-import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, AdminContent, Signup, Pay, PaymentReturn, CourseView, Community, Teach, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
+import { Home, Apply, Events, Courses, Login, Portal, Admin, Disciplines, Verify, News, About, Contact, AdminMessages, AdminContent, Signup, Pay, PaymentReturn, CourseView, Community, Teach, Certificate, Governance, Constitution, Treasury, Chapters, Corporate } from './pages.jsx';
 
 export const Logo = ({ size = 40 }) => (
   <span className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/60 bg-navy font-serif text-xs font-bold text-gold" style={{ width: size, height: size }}>
@@ -77,6 +77,7 @@ export default function App() {
           <Route path="/course/:id" element={<CourseView />} />
           <Route path="/community" element={<Community />} />
           <Route path="/teach" element={<Teach />} />
+          <Route path="/certificate/:code" element={<Certificate />} />
           <Route path="/login" element={<Login />} />
           <Route path="/portal" element={<Portal />} />
           <Route path="/admin" element={<Admin />} />

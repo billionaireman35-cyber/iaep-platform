@@ -252,8 +252,10 @@ app.get('/api/courses/:id', h(async (q, r) => {
   const open = canEdit || (!!u && enrolled);
   const lessons = await prisma.lesson.findMany({ where: { courseId: c.id }, orderBy: { position: 'asc' } });
   const classes = await prisma.liveClass.findMany({ where: { courseId: c.id, startsAt: { gte: new Date(Date.now() - 3600000) } }, orderBy: { startsAt: 'asc' } });
+  const done = uid ? (await prisma.lessonProgress.findMany({ where: { userId: uid, courseId: c.id } })).map((x) => x.lessonId) : [];
+  const cert = uid ? await prisma.certificate.findUnique({ where: { userId_courseId: { userId: uid, courseId: c.id } } }) : null;
   r.json({
-    course: c, member: !!u, enrolled, canEdit,
+    course: c, member: !!u, enrolled, canEdit, done, certificate: cert ? cert.code : null,
     lessons: lessons.map((l) => (open ? l : { id: l.id, title: l.title, position: l.position, locked: true })),
     classes: classes.map((x) => (open ? x : { id: x.id, title: x.title, startsAt: x.startsAt, durationMins: x.durationMins, locked: true })),
   });
@@ -335,6 +337,38 @@ app.post('/api/threads/:id/replies', auth(), h(async (q, r) => {
 }));
 app.delete('/api/admin/threads/:id', auth(true), h(async (q, r) => { await prisma.thread.delete({ where: { id: q.params.id } }); r.json({ ok: true }); }));
 app.delete('/api/admin/replies/:id', auth(true), h(async (q, r) => { await prisma.reply.delete({ where: { id: q.params.id } }); r.json({ ok: true }); }));
+
+app.post('/api/lessons/:id/complete', auth(), h(async (q, r) => {
+  const u = await mem(q, r); if (!u) return;
+  const l = await prisma.lesson.findUnique({ where: { id: q.params.id } });
+  if (!l) return r.status(404).json({ error: 'Lesson not found' });
+  const c = await prisma.course.findUnique({ where: { id: l.courseId } });
+  if (!c) return r.status(404).json({ error: 'Course not found' });
+  if (!(await prisma.enrollment.findUnique({ where: { userId_courseId: { userId: u.id, courseId: c.id } } }))) return r.status(403).json({ error: 'Enrol in this course first' });
+  await prisma.lessonProgress.upsert({ where: { userId_lessonId: { userId: u.id, lessonId: l.id } }, update: {}, create: { userId: u.id, lessonId: l.id, courseId: c.id } });
+  const ids = (await prisma.lesson.findMany({ where: { courseId: c.id }, select: { id: true } })).map((x) => x.id);
+  const done = await prisma.lessonProgress.count({ where: { userId: u.id, lessonId: { in: ids } } });
+  let certificate: string | null = null;
+  const existing = await prisma.certificate.findUnique({ where: { userId_courseId: { userId: u.id, courseId: c.id } } });
+  if (existing) certificate = existing.code;
+  else if (ids.length > 0 && done >= ids.length) {
+    try {
+      const ops: any[] = [prisma.certificate.create({ data: { code: 'IAEP-CERT-' + crypto.randomBytes(4).toString('hex').toUpperCase(), userId: u.id, courseId: c.id, memberName: u.name, memberNo: u.memberNo || '', courseTitle: c.title, hours: c.cpdHours, instructorName: c.instructorName } })];
+      if (c.cpdHours > 0) ops.push(prisma.cpdEntry.create({ data: { title: 'Course: ' + c.title, provider: 'IAEP', category: 'Course', hours: c.cpdHours, userId: u.id } }));
+      const res = await prisma.$transaction(ops);
+      certificate = res[0].code;
+    } catch (e) {
+      const again = await prisma.certificate.findUnique({ where: { userId_courseId: { userId: u.id, courseId: c.id } } });
+      certificate = again ? again.code : null;
+    }
+  }
+  r.json({ done, total: ids.length, certificate });
+}));
+app.get('/api/certificates/:code', h(async (q, r) => {
+  const c = await prisma.certificate.findUnique({ where: { code: q.params.code.trim().toUpperCase() } });
+  if (!c) return r.json({ valid: false });
+  r.json({ valid: true, code: c.code, memberName: c.memberName, memberNo: c.memberNo, courseTitle: c.courseTitle, hours: c.hours, instructorName: c.instructorName, issuedAt: c.issuedAt });
+}));
 
 app.use((e: any, _q: Request, r: Response, _n: NextFunction) => {
   if (e instanceof z.ZodError) return r.status(400).json({ error: 'Please check the form: ' + e.issues.map((i) => i.path.join('.')).join(', ') });
